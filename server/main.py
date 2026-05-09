@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from io import BytesIO
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import DBExpense, ExpenseSchema, get_db, init_db
+from database import DBExpense, ExpenseSchema, PreferenceUpdate, UserPreference, get_db, init_db
 from socket_manager import manager
 
 load_dotenv()
@@ -153,6 +153,38 @@ async def sync_offline_expenses(expenses: List[ExpenseSchema], db: Session = Dep
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+    
+@app.get("/preferences/{user_id}")
+def get_preferences(user_id: str, db: Session = Depends(get_db)):
+    pref = db.query(UserPreference).filter(UserPreference.user_id == user_id).first()
+    
+    if not pref:
+        raise HTTPException(
+            status_code=404, 
+            detail="User preferences not found. Please complete onboarding."
+        )
+        
+    return {
+        "succes": True,
+        "currency": pref.currency.value
+    }
+
+@app.post("/preferences/{user_id}")
+def set_preferences(user_id: str, prefs: PreferenceUpdate, db: Session = Depends(get_db)):
+    # prefs.currency is validated by Pydantic
+    pref = db.query(UserPreference).filter(UserPreference.user_id == user_id).first()
+    
+    if not pref:
+        pref = UserPreference(user_id=user_id, currency=prefs.currency)
+        db.add(pref)
+    else:
+        pref.currency = prefs.currency
+        
+    db.commit()
+    return {
+        "success": True, 
+        "currency": pref.currency.value
+    }
     
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
