@@ -1,6 +1,7 @@
 import os
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean
 from sqlalchemy.orm import sessionmaker, declarative_base
+from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -13,10 +14,11 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+# database model 
 class DBExpense(Base):
     __tablename__ = "expenses"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String, primary_key=True, index=True)
     user_id = Column(String, index=True) # to know whose receipt this is
     store_name = Column(String)
     amount = Column(Float)
@@ -24,6 +26,18 @@ class DBExpense(Base):
     category = Column(String)
     is_synced = Column(Boolean, default=True) # always true on the server side
 
+# api schema
+class ExpenseSchema(BaseModel):
+    id: str | None = None
+    user_id: str
+    store_name: str
+    amount: float
+    date: str
+    category: str
+
+    class Config:
+        from_attributes = True
+        
 def init_db():
     Base.metadata.create_all(bind=engine)
 
