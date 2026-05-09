@@ -4,7 +4,7 @@ import uuid
 import PIL.Image
 import google.generativeai as genai
 import contextlib
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Depends
+from fastapi import FastAPI, WebSocket, UploadFile, File, HTTPException, Form, Depends
 from typing import List
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
@@ -12,6 +12,7 @@ from io import BytesIO
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import DBExpense, ExpenseSchema, get_db, init_db
+from socket_manager import manager
 
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -32,6 +33,14 @@ async def lifespan(app: FastAPI):
     print("Shutting down...")
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 PROMPT = """
 Analyze this receipt image. Extract the data into a raw JSON object.
@@ -78,6 +87,13 @@ async def process_receipt(file: UploadFile = File(...), user_id: str = Form(...)
         db.add(new_expense)
         db.commit()
         db.refresh(new_expense)
+        
+        # trigger socket update
+        await manager.send_personal_message({
+            "type": "RECEIPT_PROCESSED",
+            "message": f"Successfully processed {receipt_data.get('store_name')}-{receipt_data.get('category')}",
+            "id": new_id
+        }, user_id)
         
         return {
             "success": True,
@@ -137,13 +153,17 @@ async def sync_offline_expenses(expenses: List[ExpenseSchema], db: Session = Dep
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    
+@app.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
+    print(f"Websocket for: {user_id}")
+    await manager.connect(websocket, user_id)
+    try:
+        while True:
+            # keeps the connection alive and waits for pings
+            data = await websocket.receive_text()
+    except Exception:
+        manager.disconnect(websocket, user_id)
 
 if __name__ == "__main__":
     import uvicorn
