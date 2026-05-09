@@ -10,9 +10,6 @@ void main() {
   runApp(const MyApp());
 }
 
-//LIGMA BALLS
-
-
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 

@@ -98,7 +98,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             TextField(
               controller: _amountController,
               decoration: const InputDecoration(
-                labelText: "AMOUNT (RON)",
+                labelText: "AMOUNT",
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.attach_money),
               ),
