@@ -1,14 +1,16 @@
 import os
 import json
+import uuid
 import PIL.Image
 import google.generativeai as genai
 import contextlib
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Depends
+from typing import List
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 from io import BytesIO
 
-from database import DBExpense, get_db, init_db
+from database import DBExpense, ExpenseSchema, get_db, init_db
 
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -57,8 +59,10 @@ async def process_receipt(file: UploadFile = File(...), user_id: str = Form(...)
         
         clean_json = response.text.strip()
         receipt_data = json.loads(clean_json)
+        new_id = str(uuid.uuid4())
         
         new_expense = DBExpense(
+            id=new_id,
             user_id=user_id,
             store_name=receipt_data.get("store_name", "Unknown"),
             amount=receipt_data.get("total", 0.0),
@@ -81,6 +85,51 @@ async def process_receipt(file: UploadFile = File(...), user_id: str = Form(...)
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail="AI processing failed")
     
+@app.get("/expenses/{user_id}")
+async def get_all_user_expenses(user_id: str, db: Session = Depends(get_db)):
+    # called when the user logs in on a new device (pulls everything from Neon to phone)
+    expenses = db.query(DBExpense).filter(DBExpense.user_id == user_id).all()
+    return {
+        "success": True,
+        "count": len(expenses),
+        "data": expenses
+    }
+
+@app.post("/sync-expenses")
+async def sync_offline_expenses(expenses: List[ExpenseSchema], db: Session = Depends(get_db)):
+    # app sends manual expenses or edits something offline
+    synced_items = []
+    for item in expenses:
+        existing_item = None
+        
+        if item.id:
+            existing_item = db.query(DBExpense).filter(DBExpense.id == item.id).first()
+        
+        if existing_item:
+            for key, value in item.model_dump().items():
+                setattr(existing_item, key, value)
+            existing_item.is_synced = True
+            synced_items.append(existing_item)
+        else:
+            new_id = item.id if item.id else str(uuid.uuid4())
+            
+            db_item = DBExpense(**item.model_dump(exclude={"id"}), id=new_id, is_synced=True)
+        
+            db.add(db_item)
+            synced_items.append(db_item)
+
+    try:
+        db.commit()
+        return {
+            "success": True,
+            "message": f"Successfully synced {len(synced_items)} expenses to Neon",
+            "data": [ExpenseSchema.model_validate(item) for item in synced_items]
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+    
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
