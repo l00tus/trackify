@@ -1,4 +1,4 @@
-import 'dart:io' show File, Platform;
+import 'dart:io' show File;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -17,6 +17,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _storeController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
+  DateTime _selectedDate = DateTime.now();
   String _selectedCategory = "Other";
   final List<String> _categories = ["Groceries", "Transport", "Entertainment", "Bills", "Shopping", "Other"];
 
@@ -25,6 +26,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     _amountController.clear();
     setState(() {
       _selectedCategory = "Other";
+      _selectedDate = DateTime.now();
     });
   }
 
@@ -41,6 +43,16 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     }
   }
 
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && picked != _selectedDate) setState(() => _selectedDate = picked);
+  }
+
   void _submitManualEntry() {
     final String store = _storeController.text.trim();
     final double? amount = double.tryParse(_amountController.text);
@@ -51,7 +63,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       userId: "user_123",
       storeName: store,
       amount: amount,
-      date: DateTime.now(),
+      date: _selectedDate,
       category: _selectedCategory,
       currency: "RON",
     );
@@ -65,7 +77,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text("Add Expense")),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40.0),
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 30.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -86,6 +98,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               ),
             ),
             const SizedBox(height: 32),
+            const Text("OR ENTER MANUALLY", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
             TextField(
               controller: _storeController,
               decoration: const InputDecoration(
@@ -103,6 +117,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 prefixIcon: Icon(Icons.attach_money),
               ),
               keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              title: Text("Date: ${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}"),
+              trailing: const Icon(Icons.calendar_today),
+              shape: RoundedRectangleBorder(side: const BorderSide(color: Colors.grey), borderRadius: BorderRadius.circular(4)),
+              onTap: () => _selectDate(context),
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
