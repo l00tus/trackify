@@ -1,0 +1,36 @@
+# --- IDE / Editor Specific ---
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# --- Python / FastAPI ---
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+build/
+dist/
+
+# --- Flutter / Dart ---
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+ios/.generated/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+android/app/src/main/res/values/strings.xml
+android/local.properties
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# --- Logs & Databases ---
+*.log
+local_database.db
+*.sqlite
