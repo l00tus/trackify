@@ -14,8 +14,13 @@ class ExpenseApiService {
   ExpenseApiService() {
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
-      connectTimeout: const Duration(seconds: 5),
+      connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 15),
+      responseType: ResponseType.json,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
     ));
 
     if (!kIsWeb) {
@@ -32,8 +37,12 @@ class ExpenseApiService {
   Future<List<Expense>> fetchExpenses() async {
     try {
       final response = await _dio.get('/expenses/$userId');
-      final List data = response.data['data'];
-      return data.map((e) => Expense.fromJson(e)).toList();
+      final dynamic rawData = response.data is Map ? response.data['data'] : response.data;
+
+      if (rawData is List) {
+        return rawData.map((e) => Expense.fromJson(Map<String, dynamic>.from(e))).toList();
+      }
+      return [];
     } catch (e) {
       rethrow;
     }
@@ -65,11 +74,12 @@ class ExpenseApiService {
 
   Future<Expense> _sendToAi(FormData formData) async {
     final response = await _dio.post('/process-receipt', data: formData);
+    final Map<String, dynamic> responseMap = Map<String, dynamic>.from(response.data);
+    final Map<String, dynamic> expenseData = Map<String, dynamic>.from(responseMap['data']);
 
-    final Map<String, dynamic> data = Map<String, dynamic>.from(response.data['data']);
-    data['id'] = response.data['db_id'];
+    expenseData['id'] = responseMap['db_id']?.toString() ?? expenseData['id']?.toString();
 
-    return Expense.fromJson(data);
+    return Expense.fromJson(expenseData);
   }
 
   Future<void> syncExpenses(List<Expense> expenses) async {

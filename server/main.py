@@ -141,6 +141,7 @@ async def sync_offline_expenses(expenses: List[ExpenseSchema], db: Session = Dep
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
