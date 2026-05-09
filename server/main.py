@@ -46,6 +46,9 @@ Required keys:
 def health_check():
     return {"status": "Backend is running"}
 
+# flow: image -> ai -> db
+# use when user takes a new photo
+# if offline, save photo locally and call this later when online
 @app.post("/process-receipt")
 async def process_receipt(file: UploadFile = File(...), user_id: str = Form(...), db: Session = Depends(get_db)):
     if not file.content_type.startswith("image/"):
@@ -85,6 +88,9 @@ async def process_receipt(file: UploadFile = File(...), user_id: str = Form(...)
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail="AI processing failed")
     
+# flow: cloud -> phone
+# use for pulling history (login on a new device)
+# populates the local sqlite with all previous cloud records
 @app.get("/expenses/{user_id}")
 async def get_all_user_expenses(user_id: str, db: Session = Depends(get_db)):
     # called when the user logs in on a new device (pulls everything from Neon to phone)
@@ -95,6 +101,8 @@ async def get_all_user_expenses(user_id: str, db: Session = Depends(get_db)):
         "data": expenses
     }
 
+# flow: json -> db
+# use for manual entries (no photo) and syncing edits made to existing receipts
 @app.post("/sync-expenses")
 async def sync_offline_expenses(expenses: List[ExpenseSchema], db: Session = Depends(get_db)):
     # app sends manual expenses or edits something offline
