@@ -1,7 +1,8 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, Enum as SQLEnum
 from sqlalchemy.orm import sessionmaker, declarative_base
 from pydantic import BaseModel
+from enum import Enum
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -38,6 +39,35 @@ class ExpenseSchema(BaseModel):
     class Config:
         from_attributes = True
         
+class AllowedCurrencies(str, Enum):
+    USD = "USD"
+    EUR = "EUR"
+    GBP = "GBP"
+    RON = "RON"
+    CHF = "CHF"
+    CNY = "CNY"
+    JPY = "JPY"
+    ILS = "ILS"
+    RUB = "RUB"
+    HUF = "HUF"
+    PLN = "PLN"
+    
+    # ^^
+    DEM = "DEM"   # Deutsche Mark (obsolete)
+    GRD = "GRD"   # Greek Drachma (obsolete)
+    ITL = "ITL"   # Italian Lira (obsolete)
+    FRF = "FRF"   # French Franc (obsolete)
+    ESP = "ESP"   # Spanish Peseta (obsolete)
+    ATS = "ATS"   # Austrian Schilling (obsolete)
+    
+class PreferenceUpdate(BaseModel):
+    currency: AllowedCurrencies
+
+class UserPreference(Base):
+    __tablename__ = "user_preferences"
+    user_id = Column(String, primary_key=True, index=True)
+    currency = currency = Column(SQLEnum(AllowedCurrencies), default=AllowedCurrencies.RON, nullable=False)
+    
 def init_db():
     Base.metadata.create_all(bind=engine)
 
