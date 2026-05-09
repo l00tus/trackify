@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/expense.dart';
 
 class ExpenseApiService {
-  static const String _baseUrl = 'http://192.168.100.86:8000';
+  static const String _baseUrl = 'http://localhost:8000';
 
   late final Dio _dio;
   final String userId = "user_123";
@@ -14,9 +14,8 @@ class ExpenseApiService {
   ExpenseApiService() {
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
-      connectTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(seconds: 5),
       receiveTimeout: const Duration(seconds: 15),
-      responseType: ResponseType.json,
     ));
 
     if (!kIsWeb) {
@@ -33,12 +32,8 @@ class ExpenseApiService {
   Future<List<Expense>> fetchExpenses() async {
     try {
       final response = await _dio.get('/expenses/$userId');
-      final dynamic rawData = response.data is Map ? response.data['data'] : response.data;
-
-      if (rawData is List) {
-        return rawData.map((e) => Expense.fromJson(Map<String, dynamic>.from(e))).toList();
-      }
-      return [];
+      final List data = response.data['data'];
+      return data.map((e) => Expense.fromJson(e)).toList();
     } catch (e) {
       rethrow;
     }
@@ -70,12 +65,11 @@ class ExpenseApiService {
 
   Future<Expense> _sendToAi(FormData formData) async {
     final response = await _dio.post('/process-receipt', data: formData);
-    final Map<String, dynamic> responseMap = Map<String, dynamic>.from(response.data);
-    final Map<String, dynamic> expenseData = Map<String, dynamic>.from(responseMap['data']);
 
-    expenseData['id'] = responseMap['db_id']?.toString() ?? expenseData['id']?.toString();
+    final Map<String, dynamic> data = Map<String, dynamic>.from(response.data['data']);
+    data['id'] = response.data['db_id'];
 
-    return Expense.fromJson(expenseData);
+    return Expense.fromJson(data);
   }
 
   Future<void> syncExpenses(List<Expense> expenses) async {
