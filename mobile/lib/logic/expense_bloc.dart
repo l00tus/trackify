@@ -13,12 +13,17 @@ abstract class ExpenseEvent extends Equatable {
 
 class LoadExpenses extends ExpenseEvent {}
 
+class ChangeDisplayCurrency extends ExpenseEvent {
+  final String currency;
+  const ChangeDisplayCurrency(this.currency);
+  @override
+  List<Object?> get props => [currency];
+}
+
 class ProcessReceipt extends ExpenseEvent {
   final File? image;
   final Uint8List? bytes;
-
   const ProcessReceipt({this.image, this.bytes});
-
   @override
   List<Object?> get props => [image, bytes];
 }
@@ -40,9 +45,10 @@ class ExpenseInitial extends ExpenseState {}
 class ExpenseLoading extends ExpenseState {}
 class ExpenseLoaded extends ExpenseState {
   final List<Expense> expenses;
-  const ExpenseLoaded(this.expenses);
+  final String displayCurrency;
+  const ExpenseLoaded(this.expenses, {this.displayCurrency = 'RON'});
   @override
-  List<Object?> get props => [expenses];
+  List<Object?> get props => [expenses, displayCurrency];
 }
 class ExpenseError extends ExpenseState {
   final String message;
@@ -56,16 +62,25 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
 
   ExpenseBloc(this.apiService) : super(ExpenseInitial()) {
     on<LoadExpenses>((event, emit) async {
+      final currentCurrency = state is ExpenseLoaded ? (state as ExpenseLoaded).displayCurrency : 'RON';
       emit(ExpenseLoading());
       try {
         final expenses = await apiService.fetchExpenses();
-        emit(ExpenseLoaded(expenses));
+        emit(ExpenseLoaded(expenses, displayCurrency: currentCurrency));
       } catch (e) {
         emit(ExpenseError(e.toString()));
       }
     });
 
+    on<ChangeDisplayCurrency>((event, emit) {
+      if (state is ExpenseLoaded) {
+        final currentState = state as ExpenseLoaded;
+        emit(ExpenseLoaded(currentState.expenses, displayCurrency: event.currency));
+      }
+    });
+
     on<ProcessReceipt>((event, emit) async {
+      final currentCurrency = state is ExpenseLoaded ? (state as ExpenseLoaded).displayCurrency : 'RON';
       emit(ExpenseLoading());
       try {
         if (event.bytes != null) {
@@ -74,18 +89,19 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
           await apiService.uploadReceipt(event.image!);
         }
         final updatedExpenses = await apiService.fetchExpenses();
-        emit(ExpenseLoaded(updatedExpenses));
+        emit(ExpenseLoaded(updatedExpenses, displayCurrency: currentCurrency));
       } catch (e) {
         emit(ExpenseError(e.toString()));
       }
     });
 
     on<SyncExpenses>((event, emit) async {
+      final currentCurrency = state is ExpenseLoaded ? (state as ExpenseLoaded).displayCurrency : 'RON';
       emit(ExpenseLoading());
       try {
         await apiService.syncExpenses(event.expenses);
         final updatedExpenses = await apiService.fetchExpenses();
-        emit(ExpenseLoaded(updatedExpenses));
+        emit(ExpenseLoaded(updatedExpenses, displayCurrency: currentCurrency));
       } catch (e) {
         emit(ExpenseError(e.toString()));
       }
