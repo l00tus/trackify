@@ -1,0 +1,34 @@
+# Flutter/Dart specifics
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Android specifics
+.gradle/
+local.properties
+*.kwks
+*.keystore
+*.pub
+# Note: If using Proguard
+/android/app/proguard-rules.pro
+
+# iOS specifics
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+/ios/Flutter/Generated.xcconfig
+/ios/Flutter/flutter_export_environment.sh
+/ios/ServiceDefinitions.json
+/ios/Runner/GeneratedPluginRegistrant.[mh]
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
