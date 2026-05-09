@@ -9,6 +9,7 @@ from typing import List
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 from io import BytesIO
+from fastapi.middleware.cors import CORSMiddleware
 
 from database import DBExpense, ExpenseSchema, get_db, init_db
 
@@ -136,7 +137,13 @@ async def sync_offline_expenses(expenses: List[ExpenseSchema], db: Session = Dep
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
-    
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 if __name__ == "__main__":
     import uvicorn
