@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/expense.dart';
 
 class ExpenseApiService {
-  static const String _baseUrl = 'http://localhost:8000';
+  static const String _baseUrl = 'http://192.168.100.86:8000';
 
   late final Dio _dio;
   final String userId = "user_123";
@@ -17,10 +17,6 @@ class ExpenseApiService {
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 15),
       responseType: ResponseType.json,
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
     ));
 
     if (!kIsWeb) {
