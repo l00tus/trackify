@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'package:trackify/data/repositories/auth_repository.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:trackify/data/expense_api_service.dart';
@@ -33,7 +35,7 @@ class MyApp extends StatelessWidget {
       child: BlocProvider(
         create: (context) => ExpenseBloc(
           context.read<ExpenseApiService>(),
-        )..add(LoadExpenses()),
+        )..add(LoadExpenses(FirebaseAuth.instance.currentUser!.uid)),
         child: MaterialApp(
           title: 'Trackify Ledger',
           debugShowCheckedModeBanner: false,

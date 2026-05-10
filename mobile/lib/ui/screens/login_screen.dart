@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:trackify/data/repositories/auth_repository.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -9,11 +11,21 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _userController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
-  void _handleLogin() {
-    if (_userController.text == "user123" && _passController.text == "user123") {
+  Future<void> _handleLogin() async {
+    try {
+      // Access the repository you provided in main.dart
+      final authRepo = context.read<AuthRepository>();
+      await authRepo.logIn(
+        email: _userController.text, // User needs to enter email
+        password: _passController.text,
+      );
+      
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/home');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Credentials not recognized."), backgroundColor: Color(0xFFA64D32)));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Authentication Failed: $e"), backgroundColor: const Color(0xFFA64D32))
+      );
     }
   }
   @override

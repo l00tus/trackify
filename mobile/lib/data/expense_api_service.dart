@@ -9,11 +9,6 @@ class ExpenseApiService {
   static const String _baseUrl = 'http://localhost:8000';
   late final Dio _dio;
 
-  Future<List<Expense>> fetchExpenses(String userId) async {
-    final response = await _dio.get('/expenses/$userId');
-    return (response.data as List).map((e) => Expense.fromJson(Map<String, dynamic>.from(e))).toList();
-  }
-
   ExpenseApiService() {
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
@@ -46,14 +41,11 @@ class ExpenseApiService {
     try {
       final response = await _dio.get('/expenses/$userId');
       final dynamic rawData = response.data is Map ? response.data['data'] : response.data;
-
       if (rawData is List) {
         return rawData.map((e) => Expense.fromJson(Map<String, dynamic>.from(e))).toList();
       }
       return [];
-    } catch (e) {
-      rethrow;
-    }
+    } catch (e) { rethrow; }
   }
 
   Future<Expense> uploadReceipt(String userId, File image) async {

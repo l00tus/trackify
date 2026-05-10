@@ -1,4 +1,8 @@
+import 'dart:math';
+
+import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:path/path.dart';
 import '../models/expense.dart';
 import '../data/expense_api_service.dart';
 
@@ -18,44 +22,75 @@ class LoadExpenses extends ExpenseEvent {
 
 class ChangeDisplayCurrency extends ExpenseEvent {
   final String currency;
-  ChangeDisplayCurrency(this.currency);
+  const ChangeDisplayCurrency(this.currency);
+
+  @override
+  List<Object?> get props => [currency];
 }
+
 class ChangeDefaultCurrency extends ExpenseEvent {
   final String currency;
-  ChangeDefaultCurrency(this.currency);
+  const ChangeDefaultCurrency(this.currency);
+
+  @override
+  List<Object?> get props => [currency];
 }
+
 class SyncExpenses extends ExpenseEvent {
   final List<Expense> expenses;
-  SyncExpenses(this.expenses);
+  const SyncExpenses(this.expenses);
+
+  @override
+  List<Object?> get props => [expenses];
 }
+
 class ProcessReceiptEvent extends ExpenseEvent {
   final dynamic image;
   final dynamic bytes;
-  ProcessReceiptEvent({this.image, this.bytes});
+  const ProcessReceiptEvent({this.image, this.bytes});
+
+  @override
+  List<Object?> get props => [image, bytes];
 }
 
-abstract class ExpenseState {}
-class ExpenseLoading extends ExpenseState {}
+abstract class ExpenseState extends Equatable {
+  const ExpenseState();
+
+  @override
+  List<Object?> get props => [];
+}
+
+class ExpenseLoading extends ExpenseState {
+  const ExpenseLoading();
+}
+
 class ExpenseLoaded extends ExpenseState {
   final List<Expense> expenses;
   final String displayCurrency;
   final String defaultCurrency;
+  final String userId;
 
-  ExpenseLoaded({
+  const ExpenseLoaded({
     required this.expenses,
     required this.displayCurrency,
     required this.defaultCurrency,
+    required this.userId,
   });
+
+  @override
+  List<Object?> get props => [expenses, displayCurrency, defaultCurrency, userId];
 
   ExpenseLoaded copyWith({
     List<Expense>? expenses,
     String? displayCurrency,
     String? defaultCurrency,
+    String? userId,
   }) {
     return ExpenseLoaded(
       expenses: expenses ?? this.expenses,
       displayCurrency: displayCurrency ?? this.displayCurrency,
       defaultCurrency: defaultCurrency ?? this.defaultCurrency,
+      userId: userId ?? this.userId,
     );
   }
 }
@@ -63,12 +98,12 @@ class ExpenseLoaded extends ExpenseState {
 class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
   final ExpenseApiService apiService;
 
-  ExpenseBloc(this.apiService) : super(ExpenseLoading()) {
+  ExpenseBloc(this.apiService) : super(const ExpenseLoading()) {
     on<LoadExpenses>((event, emit) async {
       try {
         final results = await Future.wait([
-          apiService.fetchExpenses(),
-          apiService.fetchUserCurrency(),
+          apiService.fetchExpenses(event.userId),
+          apiService.fetchUserCurrency(event.userId),
         ]);
 
         final expenses = results[0] as List<Expense>;
@@ -76,11 +111,17 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
 
         emit(ExpenseLoaded(
           expenses: expenses,
+          userId: event.userId,
           displayCurrency: prefCurrency,
           defaultCurrency: prefCurrency,
         ));
       } catch (e) {
-        emit(ExpenseLoaded(expenses: [], displayCurrency: "RON", defaultCurrency: "RON"));
+        emit(ExpenseLoaded(
+          expenses: [],
+          displayCurrency: 'RON',
+          defaultCurrency: 'RON',
+          userId: event.userId,
+        ));
       }
     });
 
@@ -94,7 +135,7 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       if (state is ExpenseLoaded) {
         final currentState = state as ExpenseLoaded;
         try {
-          await apiService.updateUserCurrency(event.currency);
+          await apiService.updateUserCurrency(currentState.userId, event.currency);
           emit(currentState.copyWith(
             defaultCurrency: event.currency,
             displayCurrency: event.currency,
@@ -107,12 +148,13 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       if (state is ExpenseLoaded) {
         try {
           Expense newExpense;
-          if (event.bytes != null) {
-            newExpense = await apiService.uploadReceiptWeb(event.bytes);
-          } else {
-            newExpense = await apiService.uploadReceipt(event.image);
-          }
           final currentState = state as ExpenseLoaded;
+
+          if (event.bytes != null) {
+            newExpense = await apiService.uploadReceiptWeb(currentState.userId, event.bytes);
+          } else {
+            newExpense = await apiService.uploadReceipt(currentState.userId, event.image);
+          }
           emit(currentState.copyWith(expenses: [newExpense, ...currentState.expenses]));
         } catch (e) {}
       }
