@@ -7,7 +7,6 @@ import '../models/expense.dart';
 
 class ExpenseApiService {
   static const String _baseUrl = 'http://localhost:8000';
-
   late final Dio _dio;
   final String userId = "user_123";
 
@@ -27,6 +26,15 @@ class ExpenseApiService {
           return client;
         },
       );
+    }
+  }
+
+  Future<String> fetchUserCurrency() async {
+    try {
+      final response = await _dio.get('/preferences/$userId');
+      return response.data['currency'] ?? "RON";
+    } catch (e) {
+      return "RON";
     }
   }
 
@@ -56,6 +64,17 @@ class ExpenseApiService {
     }
   }
 
+  Future<void> updateUserCurrency(String currency) async {
+    try {
+      await _dio.post(
+        '/preferences/$userId',
+        data: {"currency": currency},
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   Future<Expense> uploadReceiptWeb(Uint8List bytes) async {
     try {
       FormData formData = FormData.fromMap({
@@ -72,9 +91,7 @@ class ExpenseApiService {
     final response = await _dio.post('/process-receipt', data: formData);
     final Map<String, dynamic> responseMap = Map<String, dynamic>.from(response.data);
     final Map<String, dynamic> expenseData = Map<String, dynamic>.from(responseMap['data']);
-
     expenseData['id'] = responseMap['db_id']?.toString() ?? expenseData['id']?.toString();
-
     return Expense.fromJson(expenseData);
   }
 

@@ -1,7 +1,4 @@
-import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:equatable/equatable.dart';
 import '../models/expense.dart';
 import '../data/expense_api_service.dart';
 
@@ -21,95 +18,115 @@ class LoadExpenses extends ExpenseEvent {
 
 class ChangeDisplayCurrency extends ExpenseEvent {
   final String currency;
-  const ChangeDisplayCurrency(this.currency);
-  @override
-  List<Object?> get props => [currency];
+  ChangeDisplayCurrency(this.currency);
 }
-
-class ProcessReceipt extends ExpenseEvent {
-  final File? image;
-  final Uint8List? bytes;
-  const ProcessReceipt({this.image, this.bytes});
-  @override
-  List<Object?> get props => [image, bytes];
+class ChangeDefaultCurrency extends ExpenseEvent {
+  final String currency;
+  ChangeDefaultCurrency(this.currency);
 }
-
 class SyncExpenses extends ExpenseEvent {
   final List<Expense> expenses;
-  const SyncExpenses(this.expenses);
-  @override
-  List<Object?> get props => [expenses];
+  SyncExpenses(this.expenses);
+}
+class ProcessReceiptEvent extends ExpenseEvent {
+  final dynamic image;
+  final dynamic bytes;
+  ProcessReceiptEvent({this.image, this.bytes});
 }
 
-abstract class ExpenseState extends Equatable {
-  const ExpenseState();
-  @override
-  List<Object?> get props => [];
-}
-
-class ExpenseInitial extends ExpenseState {}
+abstract class ExpenseState {}
 class ExpenseLoading extends ExpenseState {}
 class ExpenseLoaded extends ExpenseState {
   final List<Expense> expenses;
   final String displayCurrency;
-  const ExpenseLoaded(this.expenses, {this.displayCurrency = 'RON'});
-  @override
-  List<Object?> get props => [expenses, displayCurrency];
-}
-class ExpenseError extends ExpenseState {
-  final String message;
-  const ExpenseError(this.message);
-  @override
-  List<Object?> get props => [message];
+  final String defaultCurrency;
+
+  ExpenseLoaded({
+    required this.expenses,
+    required this.displayCurrency,
+    required this.defaultCurrency,
+  });
+
+  ExpenseLoaded copyWith({
+    List<Expense>? expenses,
+    String? displayCurrency,
+    String? defaultCurrency,
+  }) {
+    return ExpenseLoaded(
+      expenses: expenses ?? this.expenses,
+      displayCurrency: displayCurrency ?? this.displayCurrency,
+      defaultCurrency: defaultCurrency ?? this.defaultCurrency,
+    );
+  }
 }
 
 class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
   final ExpenseApiService apiService;
 
-  ExpenseBloc(this.apiService) : super(ExpenseInitial()) {
+  ExpenseBloc(this.apiService) : super(ExpenseLoading()) {
     on<LoadExpenses>((event, emit) async {
-      final currentCurrency = state is ExpenseLoaded ? (state as ExpenseLoaded).displayCurrency : 'RON';
-      emit(ExpenseLoading());
       try {
-        final expenses = await apiService.fetchExpenses();
-        emit(ExpenseLoaded(expenses, displayCurrency: currentCurrency));
+        final results = await Future.wait([
+          apiService.fetchExpenses(),
+          apiService.fetchUserCurrency(),
+        ]);
+
+        final expenses = results[0] as List<Expense>;
+        final prefCurrency = results[1] as String;
+
+        emit(ExpenseLoaded(
+          expenses: expenses,
+          displayCurrency: prefCurrency,
+          defaultCurrency: prefCurrency,
+        ));
       } catch (e) {
-        emit(ExpenseError(e.toString()));
+        emit(ExpenseLoaded(expenses: [], displayCurrency: "RON", defaultCurrency: "RON"));
       }
     });
 
     on<ChangeDisplayCurrency>((event, emit) {
       if (state is ExpenseLoaded) {
-        final currentState = state as ExpenseLoaded;
-        emit(ExpenseLoaded(currentState.expenses, displayCurrency: event.currency));
+        emit((state as ExpenseLoaded).copyWith(displayCurrency: event.currency));
       }
     });
 
-    on<ProcessReceipt>((event, emit) async {
-      final currentCurrency = state is ExpenseLoaded ? (state as ExpenseLoaded).displayCurrency : 'RON';
-      emit(ExpenseLoading());
-      try {
-        if (event.bytes != null) {
-          await apiService.uploadReceiptWeb(event.bytes!);
-        } else if (event.image != null) {
-          await apiService.uploadReceipt(event.image!);
-        }
-        final updatedExpenses = await apiService.fetchExpenses();
-        emit(ExpenseLoaded(updatedExpenses, displayCurrency: currentCurrency));
-      } catch (e) {
-        emit(ExpenseError(e.toString()));
+    on<ChangeDefaultCurrency>((event, emit) async {
+      if (state is ExpenseLoaded) {
+        final currentState = state as ExpenseLoaded;
+        try {
+          await apiService.updateUserCurrency(event.currency);
+          emit(currentState.copyWith(
+            defaultCurrency: event.currency,
+            displayCurrency: event.currency,
+          ));
+        } catch (e) {}
+      }
+    });
+
+    on<ProcessReceiptEvent>((event, emit) async {
+      if (state is ExpenseLoaded) {
+        try {
+          Expense newExpense;
+          if (event.bytes != null) {
+            newExpense = await apiService.uploadReceiptWeb(event.bytes);
+          } else {
+            newExpense = await apiService.uploadReceipt(event.image);
+          }
+          final currentState = state as ExpenseLoaded;
+          emit(currentState.copyWith(expenses: [newExpense, ...currentState.expenses]));
+        } catch (e) {}
       }
     });
 
     on<SyncExpenses>((event, emit) async {
-      final currentCurrency = state is ExpenseLoaded ? (state as ExpenseLoaded).displayCurrency : 'RON';
-      emit(ExpenseLoading());
-      try {
-        await apiService.syncExpenses(event.expenses);
-        final updatedExpenses = await apiService.fetchExpenses();
-        emit(ExpenseLoaded(updatedExpenses, displayCurrency: currentCurrency));
-      } catch (e) {
-        emit(ExpenseError(e.toString()));
+      if (state is ExpenseLoaded) {
+        final currentState = state as ExpenseLoaded;
+        try {
+          await apiService.syncExpenses(event.expenses);
+          emit(currentState.copyWith(
+              expenses: [...currentState.expenses, ...event.expenses]
+          ));
+        } catch (e) {}
       }
     });
   }
