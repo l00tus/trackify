@@ -18,7 +18,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _selectedCategory;
   StatPeriod _selectedPeriod = StatPeriod.all;
   DateTime _focusedDate = DateTime.now();
-
   String _defaultCurrency = "RON";
 
   final List<String> _supportedCurrencies = [
@@ -26,14 +25,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
     "DEM", "GRD", "ITL", "FRF", "ESP", "ATS"
   ];
 
-  // Fallback rates to prevent 1:1 conversion if API fails
-  final Map<String, double> _liveRates = {
-    "RON": 1.0, "USD": 0.22, "EUR": 0.20, "GBP": 0.17,
+  final Map<String, double> _legacyRates = {
     "DEM": 0.40, "GRD": 68.10, "ITL": 387.25,
     "FRF": 1.31, "ESP": 33.27, "ATS": 2.75,
   };
 
+  final Map<String, double> _liveRates = {"RON": 1.0};
   bool _isLoadingRates = true;
+
+  static const Map<String, IconData> categoryIcons = {
+    'Groceries': Icons.restaurant,
+    'Transport': Icons.directions_car,
+    'Entertainment': Icons.theater_comedy,
+    'Bills': Icons.history_edu,
+    'Shopping': Icons.shopping_basket,
+    'Other': Icons.style,
+  };
+
+  static const Map<String, Color> categoryColors = {
+    'Groceries': Color(0xFF4F6D7A),
+    'Transport': Color(0xFF7E6B8F),
+    'Entertainment': Color(0xFFA64D32),
+    'Bills': Color(0xFF5E503F),
+    'Shopping': Color(0xFF22333B),
+    'Other': Color(0xFF432818),
+  };
 
   @override
   void initState() {
@@ -42,18 +58,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _fetchLiveRates() async {
+    setState(() => _isLoadingRates = true);
     try {
-      final response = await http.get(Uri.parse('https://api.frankfurter.app/latest?from=RON'));
+      final response = await http.get(Uri.parse('https://api.frankfurter.dev/v2/rates?base=RON'));
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final rates = Map<String, dynamic>.from(data['rates']);
+        final List<dynamic> data = json.decode(response.body);
         if (mounted) {
           setState(() {
-            rates.forEach((key, value) {
-              if (_supportedCurrencies.contains(key)) {
-                _liveRates[key] = (value is int) ? value.toDouble() : value;
+            _liveRates.clear();
+            _liveRates["RON"] = 1.0;
+            for (var item in data) {
+              String quote = item['quote'];
+              double rate = (item['rate'] as num).toDouble();
+              if (_supportedCurrencies.contains(quote)) {
+                _liveRates[quote] = rate;
               }
-            });
+            }
             _isLoadingRates = false;
           });
         }
@@ -63,21 +83,197 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // FIXED TWO-STEP CONVERSION
   double _convert(double amount, String targetCurrency) {
     if (_defaultCurrency == targetCurrency) return amount;
-
-    // 1. Convert Default Input to RON (Base)
-    // Formula: Amount / Rate_of_Default_Relative_to_RON
-    double rateDefault = _liveRates[_defaultCurrency] ?? 1.0;
-    double amountInRon = amount / rateDefault;
-
-    // 2. Convert RON to Target Output
-    // Formula: AmountInRon * Rate_of_Target_Relative_to_RON
+    double amountInRon;
+    if (_legacyRates.containsKey(_defaultCurrency)) {
+      amountInRon = amount / _legacyRates[_defaultCurrency]!;
+    } else {
+      double rateToRon = _liveRates[_defaultCurrency] ?? 1.0;
+      amountInRon = amount / rateToRon;
+    }
     if (targetCurrency == "RON") return amountInRon;
-    double rateTarget = _liveRates[targetCurrency] ?? 1.0;
+    double finalAmount;
+    if (_legacyRates.containsKey(targetCurrency)) {
+      finalAmount = amountInRon * _legacyRates[targetCurrency]!;
+    } else {
+      double rateFromRon = _liveRates[targetCurrency] ?? 1.0;
+      finalAmount = amountInRon * rateFromRon;
+    }
+    return finalAmount;
+  }
 
-    return amountInRon * rateTarget;
+  @override
+  Widget build(BuildContext context) {
+    const vintageBg = Color(0xFFF4EBD9);
+    const vintageInk = Color(0xFF2B2118);
+    const vintageBorder = BorderSide(color: Color(0xFF8D7B68), width: 1.5);
+
+    return Scaffold(
+      backgroundColor: vintageBg,
+      appBar: AppBar(
+        title: Text(_selectedCategory?.toUpperCase() ?? "GENERAL LEDGER"),
+        leading: _selectedCategory != null
+            ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => _selectedCategory = null))
+            : null,
+        actions: [
+          _buildPicker(label: "BASE", current: _defaultCurrency, vintageInk: vintageInk, onChanged: (val) => setState(() => _defaultCurrency = val!)),
+          const VerticalDivider(width: 15, indent: 15, endIndent: 15, color: Color(0xFF8D7B68)),
+          BlocBuilder<ExpenseBloc, ExpenseState>(
+            builder: (context, state) {
+              String currentView = (state is ExpenseLoaded) ? state.displayCurrency : "RON";
+              return _buildPicker(label: "VIEW", current: currentView, vintageInk: vintageInk, onChanged: (val) => context.read<ExpenseBloc>().add(ChangeDisplayCurrency(val!)));
+            },
+          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchLiveRates),
+        ],
+      ),
+      body: BlocBuilder<ExpenseBloc, ExpenseState>(
+        builder: (context, state) {
+          if (state is ExpenseLoading) return const Center(child: CircularProgressIndicator(color: vintageInk));
+          if (state is ExpenseLoaded) {
+            final targetCurrency = state.displayCurrency;
+            final periodExpenses = _filterByPeriod(state.expenses);
+
+            if (periodExpenses.isEmpty) {
+              return Column(children: [_buildPeriodSelector(), const Expanded(child: Center(child: Text("No entries recorded.", style: TextStyle(fontStyle: FontStyle.italic))))]);
+            }
+
+            final filteredExpenses = _selectedCategory == null
+                ? periodExpenses
+                : periodExpenses.where((e) => e.category == _selectedCategory).toList();
+
+            double totalSum = filteredExpenses.fold(0, (sum, e) => sum + _convert(e.amount, targetCurrency));
+
+            return Column(
+              children: [
+                _buildPeriodSelector(),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEAD8B1),
+                            border: Border.all(color: const Color(0xFF8D7B68), width: 3),
+                            boxShadow: const [BoxShadow(color: Colors.black26, offset: Offset(3, 3))],
+                          ),
+                          child: Column(
+                            children: [
+                              const Text("DISTRIBUTION OF WEALTH", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                              const SizedBox(height: 15),
+                              SizedBox(
+                                height: 220,
+                                child: PieChart(
+                                  PieChartData(
+                                    pieTouchData: PieTouchData(touchCallback: (event, res) {
+                                      if (event is FlTapUpEvent && res?.touchedSection != null && _selectedCategory == null) {
+                                        final index = res!.touchedSection!.touchedSectionIndex;
+                                        if (index >= 0) setState(() => _selectedCategory = _getCategoryFromIndex(periodExpenses, targetCurrency, index));
+                                      }
+                                    }),
+                                    sections: _selectedCategory == null
+                                        ? _generateCategorySections(periodExpenses, targetCurrency)
+                                        : _generateStoreSections(filteredExpenses, targetCurrency),
+                                    centerSpaceRadius: 60,
+                                    sectionsSpace: 3,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 15),
+                              const Text("SUM TOTAL", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                              Text("${totalSum.toStringAsFixed(2)} $targetCurrency", style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF432818))),
+                              if (_selectedCategory != null)
+                                TextButton(onPressed: () => setState(() => _selectedCategory = null), child: const Text("BACK", style: TextStyle(color: vintageInk, decoration: TextDecoration.underline, fontSize: 10))),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: filteredExpenses.length,
+                            itemBuilder: (context, index) {
+                              final item = filteredExpenses[index];
+                              final color = categoryColors[item.category] ?? Colors.grey;
+                              return Container(
+                                decoration: const BoxDecoration(border: Border(bottom: vintageBorder)),
+                                child: ListTile(
+                                  dense: true,
+                                  leading: Icon(categoryIcons[item.category] ?? Icons.category, color: color),
+                                  title: Text(item.storeName.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: Text("${item.category} | ${item.date.day}/${item.date.month}"),
+                                  trailing: Text("${_convert(item.amount, targetCurrency).toStringAsFixed(2)} $targetCurrency", style: const TextStyle(fontWeight: FontWeight.bold)),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+          return const SizedBox();
+        },
+      ),
+    );
+  }
+
+  Widget _buildPicker({required String label, required String current, required Color vintageInk, required Function(String?) onChanged}) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(label, style: TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: vintageInk.withOpacity(0.6))),
+        DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: current,
+            isDense: true,
+            icon: Icon(Icons.arrow_drop_down, color: vintageInk, size: 16),
+            dropdownColor: const Color(0xFFF4EBD9),
+            style: TextStyle(color: vintageInk, fontSize: 11, fontWeight: FontWeight.bold),
+            items: _supportedCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPeriodSelector() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: const BoxDecoration(
+        color: Color(0xFFEAD8B1),
+        border: Border(bottom: BorderSide(color: Color(0xFF8D7B68), width: 2)),
+      ),
+      child: Center(
+        child: SegmentedButton<StatPeriod>(
+          style: SegmentedButton.styleFrom(
+            backgroundColor: const Color(0xFFF4EBD9),
+            selectedBackgroundColor: const Color(0xFF8D7B68),
+            selectedForegroundColor: Colors.white,
+            side: const BorderSide(color: Color(0xFF8D7B68)),
+            textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+          ),
+          segments: const [
+            ButtonSegment(value: StatPeriod.day, label: Text("DAY")),
+            ButtonSegment(value: StatPeriod.month, label: Text("MONTH")),
+            ButtonSegment(value: StatPeriod.year, label: Text("YEAR")),
+            ButtonSegment(value: StatPeriod.all, label: Text("ALL")),
+          ],
+          selected: {_selectedPeriod},
+          onSelectionChanged: (set) => setState(() { _selectedPeriod = set.first; _selectedCategory = null; }),
+        ),
+      ),
+    );
   }
 
   List<Expense> _filterByPeriod(List<Expense> expenses) {
@@ -93,151 +289,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }).toList();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_selectedCategory ?? "Trackify"),
-        actions: [
-          _buildCurrencyPicker(
-            label: "DEFAULT",
-            current: _defaultCurrency,
-            onChanged: (val) => setState(() => _defaultCurrency = val!),
-          ),
-          const VerticalDivider(width: 20, indent: 10, endIndent: 10),
-          BlocBuilder<ExpenseBloc, ExpenseState>(
-            builder: (context, state) {
-              return _buildCurrencyPicker(
-                label: "VIEW IN",
-                current: (state is ExpenseLoaded) ? state.displayCurrency : "RON",
-                onChanged: (val) => context.read<ExpenseBloc>().add(ChangeDisplayCurrency(val!)),
-              );
-            },
-          ),
-          IconButton(icon: Icon(Icons.refresh, color: _isLoadingRates ? Colors.orange : null), onPressed: _fetchLiveRates),
-        ],
-      ),
-      body: BlocBuilder<ExpenseBloc, ExpenseState>(
-        builder: (context, state) {
-          if (state is ExpenseLoading) return const Center(child: CircularProgressIndicator());
-          if (state is ExpenseLoaded) {
-            final targetCurrency = state.displayCurrency;
-            final periodExpenses = _filterByPeriod(state.expenses);
-
-            if (periodExpenses.isEmpty) {
-              return Column(children: [_buildPeriodSelector(), const Expanded(child: Center(child: Text("No entries found.")))]);
-            }
-
-            final filteredExpenses = _selectedCategory == null
-                ? periodExpenses
-                : periodExpenses.where((e) => e.category == _selectedCategory).toList();
-
-            double totalSum = filteredExpenses.fold(0, (sum, e) => sum + _convert(e.amount, targetCurrency));
-
-            return Column(
-              children: [
-                _buildPeriodSelector(),
-                const SizedBox(height: 10),
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      height: 280, width: 280,
-                      child: PieChart(
-                        PieChartData(
-                          pieTouchData: PieTouchData(touchCallback: (event, res) {
-                            if (event is FlTapUpEvent && res?.touchedSection != null && _selectedCategory == null) {
-                              final index = res!.touchedSection!.touchedSectionIndex;
-                              if (index >= 0) setState(() => _selectedCategory = _getCategoryFromIndex(periodExpenses, targetCurrency, index));
-                            }
-                          }),
-                          sections: _selectedCategory == null
-                              ? _generateCategorySections(periodExpenses, targetCurrency)
-                              : _generateStoreSections(filteredExpenses, targetCurrency),
-                          centerSpaceRadius: 80,
-                          sectionsSpace: 2,
-                        ),
-                      ),
-                    ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(_selectedCategory == null ? "TOTAL" : "CATEGORY", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                        Text("${totalSum.toStringAsFixed(2)} $targetCurrency", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        if (_selectedCategory != null)
-                          TextButton(onPressed: () => setState(() => _selectedCategory = null), child: const Text("BACK")),
-                      ],
-                    ),
-                  ],
-                ),
-                const Divider(),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: filteredExpenses.length,
-                    itemBuilder: (context, index) {
-                      final item = filteredExpenses[index];
-                      return ListTile(
-                        leading: CircleAvatar(child: Icon(_getIcon(item.category))),
-                        title: Text(item.storeName),
-                        subtitle: Text("${item.category} • ${item.date.day}/${item.date.month}"),
-                        trailing: Text("${_convert(item.amount, targetCurrency).toStringAsFixed(2)} $targetCurrency", style: const TextStyle(fontWeight: FontWeight.bold)),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            );
-          }
-          return const SizedBox();
-        },
-      ),
-    );
-  }
-
-  Widget _buildCurrencyPicker({required String label, required String current, required Function(String?) onChanged}) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: Colors.grey)),
-        DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: _supportedCurrencies.contains(current) ? current : "RON",
-            isDense: true,
-            items: _supportedCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)))).toList(),
-            onChanged: onChanged,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPeriodSelector() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: SegmentedButton<StatPeriod>(
-        segments: const [
-          ButtonSegment(value: StatPeriod.day, label: Text("Day")),
-          ButtonSegment(value: StatPeriod.month, label: Text("Month")),
-          ButtonSegment(value: StatPeriod.year, label: Text("Year")),
-          ButtonSegment(value: StatPeriod.all, label: Text("All")),
-        ],
-        selected: {_selectedPeriod},
-        onSelectionChanged: (set) => setState(() { _selectedPeriod = set.first; _selectedCategory = null; }),
-      ),
-    );
-  }
-
-  IconData _getIcon(String cat) {
-    switch(cat) {
-      case 'Groceries': return Icons.local_grocery_store;
-      case 'Transport': return Icons.directions_bus;
-      case 'Entertainment': return Icons.confirmation_number;
-      case 'Bills': return Icons.receipt_long;
-      case 'Shopping': return Icons.shopping_bag;
-      default: return Icons.category;
-    }
-  }
-
   String _getCategoryFromIndex(List<Expense> expenses, String targetCurrency, int index) {
     final totals = <String, double>{};
     for (var e in expenses) {
@@ -251,13 +302,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     for (var e in expenses) {
       totals[e.category] = (totals[e.category] ?? 0) + _convert(e.amount, targetCurrency);
     }
-    int i = 0;
     return totals.entries.map((entry) => PieChartSectionData(
-      color: Colors.primaries[i++ % Colors.primaries.length],
+      color: categoryColors[entry.key] ?? Colors.grey,
       value: entry.value,
-      title: '${entry.key}\n${entry.value.toStringAsFixed(1)}',
-      radius: 60, showTitle: true,
-      titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+      title: entry.key.toUpperCase(),
+      radius: 50, showTitle: true,
+      titleStyle: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: Colors.white),
     )).toList();
   }
 
@@ -266,13 +316,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     for (var e in expenses) {
       storeTotals[e.storeName] = (storeTotals[e.storeName] ?? 0) + _convert(e.amount, targetCurrency);
     }
+    final colors = [const Color(0xFF432818), const Color(0xFF5E503F), const Color(0xFF22333B), const Color(0xFF4F6D7A)];
     int i = 0;
     return storeTotals.entries.map((entry) => PieChartSectionData(
-      color: Colors.accents[i++ % Colors.accents.length],
+      color: colors[i++ % colors.length],
       value: entry.value,
-      title: '${entry.key}\n${entry.value.toStringAsFixed(1)}',
-      radius: 60, showTitle: true,
-      titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+      title: entry.key.toUpperCase(),
+      radius: 50, showTitle: true,
+      titleStyle: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: Colors.white),
     )).toList();
   }
 }
