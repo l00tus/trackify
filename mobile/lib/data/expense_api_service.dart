@@ -21,6 +21,15 @@ class ExpenseApiService {
       responseType: ResponseType.json,
     ));
 
+    _dio.interceptors.add(InterceptorsWrapper(
+    onRequest: (options, handler) {
+      if (token != null) {
+        options.headers['Authorization'] = 'Bearer $token';
+      }
+      handler.next(options);
+    },
+  ));
+
     if (!kIsWeb) {
       _dio.httpClientAdapter = IOHttpClientAdapter(
         createHttpClient: () {
@@ -32,15 +41,19 @@ class ExpenseApiService {
     }
   }
 
-  Future<void> login(String email, String password) async {
-    final response = await _dio.post('/login', data: {
-      "email": email,
-      "password": password,
-    });
-    userId = response.data['user_id'];
-    userEmail = email;
-    token = response.data['access_token'];
-  }
+  Future<Map<String, dynamic>> login(String email, String password) async {
+  final response = await _dio.post(
+    '/login',
+    data: FormData.fromMap({
+      'email': email,
+      'password': password,
+    }),
+  );
+  userId = response.data['user_id'];
+  userEmail = email;
+  token = response.data['access_token'];
+  return Map<String, dynamic>.from(response.data);
+}
 
   Future<void> register(String email, String password) async {
     final response = await _dio.post('/register', data: {

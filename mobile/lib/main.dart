@@ -1,30 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:trackify/data/expense_api_service.dart';
+import 'package:trackify/data/expense_local_service.dart';
 import 'package:trackify/logic/expense_bloc.dart';
 import 'package:trackify/ui/screens/dashboard_screen.dart';
 import 'package:trackify/ui/screens/add_expense_screen.dart';
 import 'package:trackify/ui/screens/login_screen.dart';
 import 'package:trackify/ui/screens/profile_screen.dart';
 import 'package:trackify/ui/screens/register_screen.dart';
+import 'package:trackify/data/auth_storage.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final userId = await AuthStorage.getUserId() ?? '';
+  runApp(MyApp(userId: userId));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, required this.userId});
+
+  final String userId;
 
   @override
   Widget build(BuildContext context) {
     return MultiRepositoryProvider(
       providers: [
         RepositoryProvider(create: (context) => ExpenseApiService()),
+        RepositoryProvider(create: (_) => ExpenseLocalService()),
       ],
-      child: BlocProvider(
+       child: BlocProvider(
         create: (context) => ExpenseBloc(
-          context.read<ExpenseApiService>(),
+          apiService: context.read<ExpenseApiService>(),
+          localService: context.read<ExpenseLocalService>(),
         )..add(LoadExpenses()),
+        child: _ConnectivityListener(
         child: MaterialApp(
           title: 'Trackify Ledger',
           debugShowCheckedModeBanner: false,
@@ -52,7 +62,7 @@ class MyApp extends StatelessWidget {
               bodyMedium: TextStyle(fontFamily: 'Georgia', color: Color(0xFF2B2118)),
             ),
           ),
-          initialRoute: '/login',
+          initialRoute: userId.isEmpty ? '/login' : '/home', // auto-route based on session
           routes: {
             '/login': (context) => const LoginScreen(),
             '/register': (context) => const RegisterScreen(),
@@ -60,8 +70,34 @@ class MyApp extends StatelessWidget {
           },
         ),
       ),
+       ),
     );
   }
+}
+
+class _ConnectivityListener extends StatefulWidget {
+  final Widget child;
+  const _ConnectivityListener({required this.child});
+
+  @override
+  State<_ConnectivityListener> createState() => _ConnectivityListenerState();
+}
+
+class _ConnectivityListenerState extends State<_ConnectivityListener> {
+  @override
+  void initState() {
+    super.initState();
+    Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
+      if (results.isNotEmpty && 
+          results.first != ConnectivityResult.none && 
+          context.mounted) {
+        context.read<ExpenseBloc>().add(TriggerSync());
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class MainNavigation extends StatefulWidget {

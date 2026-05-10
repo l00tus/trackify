@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../data/expense_api_service.dart';
 import '../../logic/expense_bloc.dart';
+import '../../data/auth_storage.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,24 +16,29 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
   void _handleLogin() async {
-    setState(() => _isLoading = true);
-    try {
-      final api = context.read<ExpenseApiService>();
-      await api.login(_userController.text, _passController.text);
-      if (mounted) {
-        context.read<ExpenseBloc>().add(LoadExpenses());
-        Navigator.pushReplacementNamed(context, '/home');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Authentication failed."), backgroundColor: Color(0xFFA64D32))
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+  setState(() => _isLoading = true);
+  try {
+    final api = context.read<ExpenseApiService>();
+    await api.login(_userController.text, _passController.text);
+    // userId and token are now stored on the api service instance
+
+    if (mounted) {
+      context.read<ExpenseBloc>().add(LoadExpenses());
+      Navigator.pushReplacementNamed(context, '/home');
     }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Authentication failed."),
+          backgroundColor: Color(0xFFA64D32),
+        ),
+      );
+    }
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
   }
+}
 
   @override
   Widget build(BuildContext context) {

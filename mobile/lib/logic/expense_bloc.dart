@@ -1,77 +1,161 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:uuid/uuid.dart';
 import '../models/expense.dart';
 import '../data/expense_api_service.dart';
+import '../data/expense_local_service.dart';
+
+// ── Events (unchanged, plus one new one) ─────────────────────────────────────
 
 abstract class ExpenseEvent {}
+
 class LoadExpenses extends ExpenseEvent {}
+
+class AddExpenseLocally extends ExpenseEvent {
+  final Expense expense;
+  AddExpenseLocally(this.expense);
+}
+
 class ChangeDisplayCurrency extends ExpenseEvent {
   final String currency;
   ChangeDisplayCurrency(this.currency);
 }
+
 class ChangeDefaultCurrency extends ExpenseEvent {
   final String currency;
   ChangeDefaultCurrency(this.currency);
 }
+
 class SyncExpenses extends ExpenseEvent {
   final List<Expense> expenses;
   SyncExpenses(this.expenses);
 }
+
+class TriggerSync extends ExpenseEvent {} // call this on connectivity restore
+
 class ProcessReceiptEvent extends ExpenseEvent {
   final dynamic image;
   final dynamic bytes;
   ProcessReceiptEvent({this.image, this.bytes});
 }
 
+// ── States (unchanged) ────────────────────────────────────────────────────────
+
 abstract class ExpenseState {}
+
 class ExpenseLoading extends ExpenseState {}
+
 class ExpenseLoaded extends ExpenseState {
   final List<Expense> expenses;
   final String displayCurrency;
   final String defaultCurrency;
+  final bool hasPendingSync; // new: shows a sync badge in UI if you want
 
   ExpenseLoaded({
     required this.expenses,
     required this.displayCurrency,
     required this.defaultCurrency,
+    this.hasPendingSync = false,
   });
 
   ExpenseLoaded copyWith({
     List<Expense>? expenses,
     String? displayCurrency,
     String? defaultCurrency,
+    bool? hasPendingSync,
   }) {
     return ExpenseLoaded(
       expenses: expenses ?? this.expenses,
       displayCurrency: displayCurrency ?? this.displayCurrency,
       defaultCurrency: defaultCurrency ?? this.defaultCurrency,
+      hasPendingSync: hasPendingSync ?? this.hasPendingSync,
     );
   }
 }
 
+// ── BLoC ──────────────────────────────────────────────────────────────────────
+
 class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
   final ExpenseApiService apiService;
+  final ExpenseLocalService localService;
+  // final String userId; // pass in from auth after login
 
-  ExpenseBloc(this.apiService) : super(ExpenseLoading()) {
+  ExpenseBloc({
+    required this.apiService,
+    required this.localService,
+  }) : super(ExpenseLoading()) {
+
     on<LoadExpenses>((event, emit) async {
-      try {
-        final results = await Future.wait([
-          apiService.fetchExpenses(),
-          apiService.fetchUserCurrency(),
-        ]);
+      final uid = apiService.userId ?? '';
+      final localExpenses = await localService.getAllExpenses(uid);
+      final prefCurrency = await _safeGetCurrency();
 
-        final expenses = results[0] as List<Expense>;
-        final prefCurrency = results[1] as String;
+      final unsynced = await localService.getUnsyncedExpenses(uid);
+      emit(ExpenseLoaded(
+        expenses: localExpenses,
+        displayCurrency: prefCurrency,
+        defaultCurrency: prefCurrency,
+        hasPendingSync: unsynced.isNotEmpty,
+      ));
 
-        emit(ExpenseLoaded(
-          expenses: expenses,
-          displayCurrency: prefCurrency,
-          defaultCurrency: prefCurrency,
-        ));
-      } catch (e) {
-        emit(ExpenseLoaded(expenses: [], displayCurrency: "RON", defaultCurrency: "RON"));
+      // 2. If online, fetch from server and replace local cache
+      if (await _isOnline()) {
+        try {
+          final serverExpenses = await apiService.fetchExpenses();
+          await localService.replaceAllFromServer(serverExpenses, uid);
+          emit((state as ExpenseLoaded).copyWith(
+            expenses: serverExpenses,
+            hasPendingSync: false,
+          ));
+        } catch (_) {
+          // Server failed — stay on local data, that's fine
+        }
       }
     });
 
+    // ── Add expense locally (offline-safe) ───────────────────────────────────
+    on<AddExpenseLocally>((event, emit) async {
+      await localService.insertExpense(event.expense, isSynced: false);
+
+      if (state is ExpenseLoaded) {
+        final current = state as ExpenseLoaded;
+        final updated = [event.expense, ...current.expenses];
+
+        // Try to sync immediately if online
+        if (await _isOnline()) {
+          try {
+            await apiService.syncExpenses([event.expense]);
+            await localService.markSynced(event.expense.id);
+            emit(current.copyWith(expenses: updated, hasPendingSync: false));
+          } catch (_) {
+            emit(current.copyWith(expenses: updated, hasPendingSync: true));
+          }
+        } else {
+          emit(current.copyWith(expenses: updated, hasPendingSync: true));
+        }
+      }
+    });
+
+    // ── Trigger sync (call when connectivity restored) ────────────────────────
+     on<TriggerSync>((event, emit) async {
+      if (state is! ExpenseLoaded) return;
+      final current = state as ExpenseLoaded;
+      final uid = apiService.userId ?? '';
+
+      final unsynced = await localService.getUnsyncedExpenses(uid);
+      if (unsynced.isEmpty) return;
+
+      if (await _isOnline()) {
+        try {
+          await apiService.syncExpenses(unsynced);
+          await localService.markAllSynced(unsynced.map((e) => e.id).toList());
+          emit(current.copyWith(hasPendingSync: false));
+        } catch (_) {
+          // Stay pending, try again next time
+        }
+      }
+    });
+    // ── Currency (unchanged) ─────────────────────────────────────────────────
     on<ChangeDisplayCurrency>((event, emit) {
       if (state is ExpenseLoaded) {
         emit((state as ExpenseLoaded).copyWith(displayCurrency: event.currency));
@@ -80,17 +164,18 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
 
     on<ChangeDefaultCurrency>((event, emit) async {
       if (state is ExpenseLoaded) {
-        final currentState = state as ExpenseLoaded;
+        final current = state as ExpenseLoaded;
         try {
           await apiService.updateUserCurrency(event.currency);
-          emit(currentState.copyWith(
+          emit(current.copyWith(
             defaultCurrency: event.currency,
             displayCurrency: event.currency,
           ));
-        } catch (e) {}
+        } catch (_) {}
       }
     });
 
+    // ── Receipt processing (unchanged) ───────────────────────────────────────
     on<ProcessReceiptEvent>((event, emit) async {
       if (state is ExpenseLoaded) {
         try {
@@ -100,22 +185,38 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
           } else {
             newExpense = await apiService.uploadReceipt(event.image);
           }
-          final currentState = state as ExpenseLoaded;
-          emit(currentState.copyWith(expenses: [newExpense, ...currentState.expenses]));
-        } catch (e) {}
+          // Receipt came from server so mark as synced
+          await localService.insertExpense(newExpense, isSynced: true);
+          final current = state as ExpenseLoaded;
+          emit(current.copyWith(expenses: [newExpense, ...current.expenses]));
+        } catch (_) {}
       }
     });
 
+    // ── Legacy SyncExpenses (kept for compatibility) ──────────────────────────
     on<SyncExpenses>((event, emit) async {
       if (state is ExpenseLoaded) {
-        final currentState = state as ExpenseLoaded;
+        final current = state as ExpenseLoaded;
         try {
           await apiService.syncExpenses(event.expenses);
-          emit(currentState.copyWith(
-              expenses: [...currentState.expenses, ...event.expenses]
+          emit(current.copyWith(
+            expenses: [...current.expenses, ...event.expenses],
           ));
-        } catch (e) {}
+        } catch (_) {}
       }
     });
+  }
+
+  Future<bool> _isOnline() async {
+    final result = await Connectivity().checkConnectivity();
+    return result != ConnectivityResult.none;
+  }
+
+  Future<String> _safeGetCurrency() async {
+    try {
+      return await apiService.fetchUserCurrency();
+    } catch (_) {
+      return 'RON';
+    }
   }
 }
