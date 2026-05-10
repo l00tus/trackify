@@ -36,29 +36,18 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     if (image != null) {
       if (kIsWeb) {
         final bytes = await image.readAsBytes();
-        context.read<ExpenseBloc>().add(ProcessReceipt(bytes: bytes));
+        context.read<ExpenseBloc>().add(ProcessReceiptEvent(bytes: bytes));
       } else {
-        context.read<ExpenseBloc>().add(ProcessReceipt(image: File(image.path)));
+        context.read<ExpenseBloc>().add(ProcessReceiptEvent(image: File(image.path)));
       }
       _clearForm();
     }
-  }
-
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null && picked != _selectedDate) setState(() => _selectedDate = picked);
   }
 
   void _submitManualEntry() {
     final String store = _storeController.text.trim();
     final double? amount = double.tryParse(_amountController.text);
     if (store.isEmpty || amount == null) return;
-
     final newExpense = Expense(
       id: const Uuid().v4(),
       userId: "user_123",
@@ -68,7 +57,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       category: _selectedCategory,
       currency: "RON",
     );
-
     context.read<ExpenseBloc>().add(SyncExpenses([newExpense]));
     _clearForm();
   }
@@ -93,9 +81,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       },
     );
     if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-      });
+      setState(() { _selectedDate = picked; });
     }
   }
 
@@ -103,7 +89,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   Widget build(BuildContext context) {
     const vintageBg = Color(0xFFF4EBD9);
     const vintageInk = Color(0xFF2B2118);
-
     return Scaffold(
       backgroundColor: vintageBg,
       appBar: AppBar(title: const Text("NEW LEDGER ENTRY")),
@@ -121,12 +106,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Center(
-                    child: Text(
-                      "TRANSACTION DETAILS",
-                      style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5, fontSize: 12),
-                    ),
-                  ),
+                  const Center(child: Text("TRANSACTION DETAILS", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5, fontSize: 12))),
                   const Divider(color: Color(0xFF8D7B68), thickness: 1.5),
                   _buildVintageField("Establishment Name", _storeController, Icons.store),
                   const SizedBox(height: 15),
@@ -134,7 +114,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   const SizedBox(height: 15),
                   _buildVintageDropdown("Classification"),
                   const SizedBox(height: 15),
-                  // Restored Date Picker Field
                   InkWell(
                     onTap: () => _selectDate(context),
                     child: InputDecorator(
@@ -143,37 +122,21 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         prefixIcon: Icon(Icons.calendar_today, color: Color(0xFF2B2118)),
                         enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF8D7B68))),
                       ),
-                      child: Text(
-                        DateFormat('yyyy-MM-dd').format(_selectedDate),
-                        style: const TextStyle(fontFamily: 'Georgia', color: Color(0xFF2B2118)),
-                      ),
+                      child: Text(DateFormat('yyyy-MM-dd').format(_selectedDate), style: const TextStyle(fontFamily: 'Georgia', color: Color(0xFF2B2118))),
                     ),
                   ),
                   const SizedBox(height: 30),
                   ElevatedButton(
                     onPressed: _submitManualEntry,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: vintageInk,
-                      foregroundColor: vintageBg,
-                      elevation: 5,
+                      backgroundColor: vintageInk, foregroundColor: vintageBg, elevation: 5,
                       padding: const EdgeInsets.symmetric(vertical: 18),
                       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                     ),
-                    child: const Text(
-                      "RECORD IN PERMANENT LEDGER",
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.0),
-                    ),
+                    child: const Text("RECORD IN PERMANENT LEDGER", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 40),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildVintageIconButton(Icons.camera_alt, "SCAN RECEIPT", () => _pickImage(context, ImageSource.camera)),
-                _buildVintageIconButton(Icons.photo_library, "FROM GALLERY", () => _pickImage(context, ImageSource.gallery)),
-              ],
             ),
             const SizedBox(height: 40),
             Row(
@@ -195,8 +158,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
       style: const TextStyle(fontFamily: 'Georgia'),
       decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: const Color(0xFF2B2118)),
+        labelText: label, prefixIcon: Icon(icon, color: const Color(0xFF2B2118)),
         labelStyle: const TextStyle(color: Color(0xFF5E503F)),
         enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF8D7B68))),
         focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF2B2118), width: 2)),
@@ -208,8 +170,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return DropdownButtonFormField<String>(
       value: _selectedCategory,
       decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: const Icon(Icons.category, color: Color(0xFF2B2118)),
+        labelText: label, prefixIcon: const Icon(Icons.category, color: Color(0xFF2B2118)),
         labelStyle: const TextStyle(color: Color(0xFF5E503F)),
         enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF8D7B68))),
       ),
@@ -222,15 +183,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return Column(
       children: [
         IconButton.filled(
-          onPressed: onPressed,
-          icon: Icon(icon),
+          onPressed: onPressed, icon: Icon(icon),
           style: IconButton.styleFrom(
-            backgroundColor: const Color(0xFFD6C5A0),
-            foregroundColor: const Color(0xFF2B2118),
-            padding: const EdgeInsets.all(20),
-            shape: const RoundedRectangleBorder(
-              side: BorderSide(color: Color(0xFF8D7B68), width: 1),
-            ),
+            backgroundColor: const Color(0xFFD6C5A0), foregroundColor: const Color(0xFF2B2118),
+            padding: const EdgeInsets.all(20), shape: const RoundedRectangleBorder(side: BorderSide(color: Color(0xFF8D7B68), width: 1)),
           ),
         ),
         const SizedBox(height: 8),
