@@ -10,6 +10,7 @@ class ExpenseApiService {
   late final Dio _dio;
 
   String? userId;
+  String? userEmail;
   String? token;
 
   ExpenseApiService() {
@@ -37,6 +38,7 @@ class ExpenseApiService {
       "password": password,
     });
     userId = response.data['user_id'];
+    userEmail = email;
     token = response.data['access_token'];
   }
 
@@ -46,6 +48,7 @@ class ExpenseApiService {
       "password": password,
     });
     userId = response.data['user_id'];
+    userEmail = email;
     token = response.data['access_token'];
   }
 
