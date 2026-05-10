@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/expense.dart';
 
 class ExpenseApiService {
-  static const String _baseUrl = 'http://192.168.100.86:8000';
+  static const String _baseUrl = 'http://localhost:8000';
 
   late final Dio _dio;
   final String userId = "user_123";
