@@ -4,6 +4,9 @@ import 'package:trackify/data/expense_api_service.dart';
 import 'package:trackify/logic/expense_bloc.dart';
 import 'package:trackify/ui/screens/dashboard_screen.dart';
 import 'package:trackify/ui/screens/add_expense_screen.dart';
+import 'package:trackify/ui/screens/login_screen.dart';
+import 'package:trackify/ui/screens/profile_screen.dart';
+import 'package:trackify/ui/screens/register_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -49,7 +52,12 @@ class MyApp extends StatelessWidget {
               bodyMedium: TextStyle(fontFamily: 'Georgia', color: Color(0xFF2B2118)),
             ),
           ),
-          home: const MainNavigation(),
+          initialRoute: '/login',
+          routes: {
+            '/login': (context) => const LoginScreen(),
+            '/register': (context) => const RegisterScreen(),
+            '/home': (context) => const MainNavigation(),
+          },
         ),
       ),
     );
@@ -69,6 +77,7 @@ class _MainNavigationState extends State<MainNavigation> {
   final List<Widget> _screens = [
     const DashboardScreen(),
     const AddExpenseScreen(),
+    const ProfileScreen(),
   ];
 
   @override
@@ -99,6 +108,10 @@ class _MainNavigationState extends State<MainNavigation> {
             NavigationDestination(
               icon: Icon(Icons.add_box),
               label: 'New Entry',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.account_box),
+              label: 'Profile',
             ),
           ],
         ),

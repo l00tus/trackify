@@ -18,7 +18,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _selectedCategory;
   StatPeriod _selectedPeriod = StatPeriod.all;
   DateTime _focusedDate = DateTime.now();
-  String _defaultCurrency = "RON";
 
   final List<String> _supportedCurrencies = [
     "USD", "EUR", "GBP", "RON", "CHF", "CNY", "JPY", "ILS", "RUB", "HUF", "PLN",
@@ -83,13 +82,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  double _convert(double amount, String targetCurrency) {
-    if (_defaultCurrency == targetCurrency) return amount;
+  double _convert(double amount, String targetCurrency, String defaultCurrency) {
+    if (defaultCurrency == targetCurrency) return amount;
     double amountInRon;
-    if (_legacyRates.containsKey(_defaultCurrency)) {
-      amountInRon = amount / _legacyRates[_defaultCurrency]!;
+    if (_legacyRates.containsKey(defaultCurrency)) {
+      amountInRon = amount / _legacyRates[defaultCurrency]!;
     } else {
-      double rateToRon = _liveRates[_defaultCurrency] ?? 1.0;
+      double rateToRon = _liveRates[defaultCurrency] ?? 1.0;
       amountInRon = amount / rateToRon;
     }
     if (targetCurrency == "RON") return amountInRon;
@@ -117,12 +116,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => _selectedCategory = null))
             : null,
         actions: [
-          _buildPicker(label: "BASE", current: _defaultCurrency, vintageInk: vintageInk, onChanged: (val) => setState(() => _defaultCurrency = val!)),
-          const VerticalDivider(width: 15, indent: 15, endIndent: 15, color: Color(0xFF8D7B68)),
           BlocBuilder<ExpenseBloc, ExpenseState>(
             builder: (context, state) {
               String currentView = (state is ExpenseLoaded) ? state.displayCurrency : "RON";
-              return _buildPicker(label: "VIEW", current: currentView, vintageInk: vintageInk, onChanged: (val) => context.read<ExpenseBloc>().add(ChangeDisplayCurrency(val!)));
+              return _buildPicker(
+                label: "VIEWING IN",
+                current: currentView,
+                vintageInk: vintageInk,
+                onChanged: (val) => context.read<ExpenseBloc>().add(ChangeDisplayCurrency(val!)),
+              );
             },
           ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchLiveRates),
@@ -133,18 +135,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (state is ExpenseLoading) return const Center(child: CircularProgressIndicator(color: vintageInk));
           if (state is ExpenseLoaded) {
             final targetCurrency = state.displayCurrency;
+            final defaultCurrency = state.defaultCurrency;
             final periodExpenses = _filterByPeriod(state.expenses);
-
             if (periodExpenses.isEmpty) {
               return Column(children: [_buildPeriodSelector(), const Expanded(child: Center(child: Text("No entries recorded.", style: TextStyle(fontStyle: FontStyle.italic))))]);
             }
-
             final filteredExpenses = _selectedCategory == null
                 ? periodExpenses
                 : periodExpenses.where((e) => e.category == _selectedCategory).toList();
-
-            double totalSum = filteredExpenses.fold(0, (sum, e) => sum + _convert(e.amount, targetCurrency));
-
+            double totalSum = filteredExpenses.fold(0, (sum, e) => sum + _convert(e.amount, targetCurrency, defaultCurrency));
             return Column(
               children: [
                 _buildPeriodSelector(),
@@ -171,12 +170,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     pieTouchData: PieTouchData(touchCallback: (event, res) {
                                       if (event is FlTapUpEvent && res?.touchedSection != null && _selectedCategory == null) {
                                         final index = res!.touchedSection!.touchedSectionIndex;
-                                        if (index >= 0) setState(() => _selectedCategory = _getCategoryFromIndex(periodExpenses, targetCurrency, index));
+                                        if (index >= 0) setState(() => _selectedCategory = _getCategoryFromIndex(periodExpenses, targetCurrency, defaultCurrency, index));
                                       }
                                     }),
                                     sections: _selectedCategory == null
-                                        ? _generateCategorySections(periodExpenses, targetCurrency)
-                                        : _generateStoreSections(filteredExpenses, targetCurrency),
+                                        ? _generateCategorySections(periodExpenses, targetCurrency, defaultCurrency)
+                                        : _generateStoreSections(filteredExpenses, targetCurrency, defaultCurrency),
                                     centerSpaceRadius: 60,
                                     sectionsSpace: 3,
                                   ),
@@ -186,7 +185,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               const Text("SUM TOTAL", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
                               Text("${totalSum.toStringAsFixed(2)} $targetCurrency", style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF432818))),
                               if (_selectedCategory != null)
-                                TextButton(onPressed: () => setState(() => _selectedCategory = null), child: const Text("BACK", style: TextStyle(color: vintageInk, decoration: TextDecoration.underline, fontSize: 10))),
+                                TextButton(onPressed: () => setState(() => _selectedCategory = null), child: const Text("CLOSE FOLDER", style: TextStyle(color: vintageInk, decoration: TextDecoration.underline, fontSize: 10))),
                             ],
                           ),
                         ),
@@ -206,7 +205,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   leading: Icon(categoryIcons[item.category] ?? Icons.category, color: color),
                                   title: Text(item.storeName.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold)),
                                   subtitle: Text("${item.category} | ${item.date.day}/${item.date.month}"),
-                                  trailing: Text("${_convert(item.amount, targetCurrency).toStringAsFixed(2)} $targetCurrency", style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  trailing: Text("${_convert(item.amount, targetCurrency, defaultCurrency).toStringAsFixed(2)} $targetCurrency", style: const TextStyle(fontWeight: FontWeight.bold)),
                                 ),
                               );
                             },
@@ -227,22 +226,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildPicker({required String label, required String current, required Color vintageInk, required Function(String?) onChanged}) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(label, style: TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: vintageInk.withOpacity(0.6))),
-        DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: current,
-            isDense: true,
-            icon: Icon(Icons.arrow_drop_down, color: vintageInk, size: 16),
-            dropdownColor: const Color(0xFFF4EBD9),
-            style: TextStyle(color: vintageInk, fontSize: 11, fontWeight: FontWeight.bold),
-            items: _supportedCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-            onChanged: onChanged,
+    return Padding(
+      padding: const EdgeInsets.only(right: 16.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(label, style: TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: vintageInk.withOpacity(0.6))),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: current,
+              isDense: true,
+              icon: Icon(Icons.arrow_drop_down, color: vintageInk, size: 16),
+              dropdownColor: const Color(0xFFF4EBD9),
+              style: TextStyle(color: vintageInk, fontSize: 11, fontWeight: FontWeight.bold),
+              items: _supportedCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+              onChanged: onChanged,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -278,33 +280,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<Expense> _filterByPeriod(List<Expense> expenses) {
     return expenses.where((e) {
-      if (_selectedPeriod == StatPeriod.day) {
-        return e.date.year == _focusedDate.year && e.date.month == _focusedDate.month && e.date.day == _focusedDate.day;
-      } else if (_selectedPeriod == StatPeriod.month) {
-        return e.date.year == _focusedDate.year && e.date.month == _focusedDate.month;
-      } else if (_selectedPeriod == StatPeriod.year) {
-        return e.date.year == _focusedDate.year;
-      }
+      if (_selectedPeriod == StatPeriod.day) return e.date.year == _focusedDate.year && e.date.month == _focusedDate.month && e.date.day == _focusedDate.day;
+      if (_selectedPeriod == StatPeriod.month) return e.date.year == _focusedDate.year && e.date.month == _focusedDate.month;
+      if (_selectedPeriod == StatPeriod.year) return e.date.year == _focusedDate.year;
       return true;
     }).toList();
   }
 
-  String _getCategoryFromIndex(List<Expense> expenses, String targetCurrency, int index) {
-    final totals = <String, double>{};
-    final totals = <String, double>{};
+  String _getCategoryFromIndex(List<Expense> expenses, String targetCurrency, String defaultCurrency, int index) {
+    final Map<String, double> totals = {};
     for (var e in expenses) {
-      totals[e.category] = (totals[e.category] ?? 0) + _convert(e.amount, targetCurrency);
-      totals[e.category] = (totals[e.category] ?? 0) + _convert(e.amount, targetCurrency);
+      totals[e.category] = (totals[e.category] ?? 0) + _convert(e.amount, targetCurrency, defaultCurrency);
     }
     return totals.keys.elementAt(index);
   }
 
-  List<PieChartSectionData> _generateCategorySections(List<Expense> expenses, String targetCurrency) {
-    final totals = <String, double>{};
-    final totals = <String, double>{};
+  List<PieChartSectionData> _generateCategorySections(List<Expense> expenses, String targetCurrency, String defaultCurrency) {
+    final Map<String, double> totals = {};
     for (var e in expenses) {
-      totals[e.category] = (totals[e.category] ?? 0) + _convert(e.amount, targetCurrency);
-      totals[e.category] = (totals[e.category] ?? 0) + _convert(e.amount, targetCurrency);
+      totals[e.category] = (totals[e.category] ?? 0) + _convert(e.amount, targetCurrency, defaultCurrency);
     }
     return totals.entries.map((entry) => PieChartSectionData(
       color: categoryColors[entry.key] ?? Colors.grey,
@@ -315,12 +309,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     )).toList();
   }
 
-  List<PieChartSectionData> _generateStoreSections(List<Expense> expenses, String targetCurrency) {
-    final storeTotals = <String, double>{};
-    final storeTotals = <String, double>{};
+  List<PieChartSectionData> _generateStoreSections(List<Expense> expenses, String targetCurrency, String defaultCurrency) {
+    final Map<String, double> storeTotals = {};
     for (var e in expenses) {
-      storeTotals[e.storeName] = (storeTotals[e.storeName] ?? 0) + _convert(e.amount, targetCurrency);
-      storeTotals[e.storeName] = (storeTotals[e.storeName] ?? 0) + _convert(e.amount, targetCurrency);
+      storeTotals[e.storeName] = (storeTotals[e.storeName] ?? 0) + _convert(e.amount, targetCurrency, defaultCurrency);
     }
     final colors = [const Color(0xFF432818), const Color(0xFF5E503F), const Color(0xFF22333B), const Color(0xFF4F6D7A)];
     int i = 0;
