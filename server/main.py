@@ -12,8 +12,7 @@ from io import BytesIO
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import DBExpense, ExpenseSchema, PreferenceUpdate, TokenResponse, UserCreate, UserPreference, DBUser, get_db, init_db
-from server import security
-from security import get_password_hash
+from security import get_password_hash, generate_session_token, verify_password
 from socket_manager import manager
 
 load_dotenv()
@@ -188,14 +187,14 @@ def set_preferences(user_id: str, prefs: PreferenceUpdate, db: Session = Depends
         "currency": pref.currency.value
     }
     
-app.post("/register", response_model=TokenResponse)
+@app.post("/register", response_model=TokenResponse)
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
     existing_user = db.query(DBUser).filter(DBUser.email == user.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    hashed_pw = security.get_password_hash(user.password)
-    token = security.generate_session_token()
+    hashed_pw = get_password_hash(user.password)
+    token = generate_session_token()
     
     new_user = DBUser(
         email=user.email, 
@@ -225,10 +224,10 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
 def login_user(user: UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(DBUser).filter(DBUser.email == user.email).first()
     
-    if not db_user or not security.verify_password(user.password, db_user.hashed_password):
+    if not db_user or not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    token = security.generate_session_token()
+    token = generate_session_token()
     db_user.session_token = token
     
     db.commit()
