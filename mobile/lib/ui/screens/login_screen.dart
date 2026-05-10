@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:dio/dio.dart';
 import '../../data/expense_api_service.dart';
 import '../../logic/expense_bloc.dart';
 import '../../data/auth_storage.dart';
@@ -22,16 +23,34 @@ class _LoginScreenState extends State<LoginScreen> {
     await api.login(_userController.text, _passController.text);
     // userId and token are now stored on the api service instance
 
+    // Save to storage
+    if (api.token != null && api.userId != null) {
+      await AuthStorage.save(token: api.token!, userId: api.userId!);
+    }
+
     if (mounted) {
       context.read<ExpenseBloc>().add(LoadExpenses());
       Navigator.pushReplacementNamed(context, '/home');
     }
   } catch (e) {
+    String errorMessage = "Authentication failed.";
+    if (e is DioException && e.response != null) {
+      final statusCode = e.response!.statusCode;
+      if (statusCode == 422) {
+        errorMessage = "Invalid email format. Please enter a valid email address.";
+      } else if (statusCode == 401) {
+        errorMessage = "Invalid email or password.";
+      } else if (statusCode == 400) {
+        errorMessage = "Email already registered or bad request.";
+      } else {
+        errorMessage = e.response!.data?['detail'] ?? "Authentication failed.";
+      }
+    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Authentication failed."),
-          backgroundColor: Color(0xFFA64D32),
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: const Color(0xFFA64D32),
         ),
       );
     }

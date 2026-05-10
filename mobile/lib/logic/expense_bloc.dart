@@ -5,8 +5,6 @@ import '../models/expense.dart';
 import '../data/expense_api_service.dart';
 import '../data/expense_local_service.dart';
 
-// ── Events (unchanged, plus one new one) ─────────────────────────────────────
-
 abstract class ExpenseEvent {}
 
 class LoadExpenses extends ExpenseEvent {}
@@ -39,7 +37,6 @@ class ProcessReceiptEvent extends ExpenseEvent {
   ProcessReceiptEvent({this.image, this.bytes});
 }
 
-// ── States (unchanged) ────────────────────────────────────────────────────────
 
 abstract class ExpenseState {}
 
@@ -73,7 +70,6 @@ class ExpenseLoaded extends ExpenseState {
   }
 }
 
-// ── BLoC ──────────────────────────────────────────────────────────────────────
 
 class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
   final ExpenseApiService apiService;
@@ -87,6 +83,7 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
 
     on<LoadExpenses>((event, emit) async {
       final uid = apiService.userId ?? '';
+      print('debug userId in bloc: $uid');
       final localExpenses = await localService.getAllExpenses(uid);
       final prefCurrency = await _safeGetCurrency();
 
@@ -98,7 +95,6 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         hasPendingSync: unsynced.isNotEmpty,
       ));
 
-      // 2. If online, fetch from server and replace local cache
       if (await _isOnline()) {
         try {
           final serverExpenses = await apiService.fetchExpenses();
@@ -113,7 +109,6 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       }
     });
 
-    // ── Add expense locally (offline-safe) ───────────────────────────────────
     on<AddExpenseLocally>((event, emit) async {
       await localService.insertExpense(event.expense, isSynced: false);
 
@@ -136,7 +131,6 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       }
     });
 
-    // ── Trigger sync (call when connectivity restored) ────────────────────────
      on<TriggerSync>((event, emit) async {
       if (state is! ExpenseLoaded) return;
       final current = state as ExpenseLoaded;
@@ -155,7 +149,6 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         }
       }
     });
-    // ── Currency (unchanged) ─────────────────────────────────────────────────
     on<ChangeDisplayCurrency>((event, emit) {
       if (state is ExpenseLoaded) {
         emit((state as ExpenseLoaded).copyWith(displayCurrency: event.currency));
@@ -175,7 +168,6 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       }
     });
 
-    // ── Receipt processing (unchanged) ───────────────────────────────────────
     on<ProcessReceiptEvent>((event, emit) async {
       if (state is ExpenseLoaded) {
         try {
@@ -193,7 +185,6 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       }
     });
 
-    // ── Legacy SyncExpenses (kept for compatibility) ──────────────────────────
     on<SyncExpenses>((event, emit) async {
       if (state is ExpenseLoaded) {
         final current = state as ExpenseLoaded;

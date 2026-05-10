@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/expense.dart';
+import 'auth_storage.dart';
 
 class ExpenseApiService {
   static const String _baseUrl = 'http://localhost:8000';
@@ -14,6 +15,7 @@ class ExpenseApiService {
   String? token;
 
   ExpenseApiService() {
+    _loadFromStorage();
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
       connectTimeout: const Duration(seconds: 10),
@@ -41,19 +43,24 @@ class ExpenseApiService {
     }
   }
 
+  Future<void> _loadFromStorage() async {
+    token = await AuthStorage.getToken();
+    userId = await AuthStorage.getUserId();
+  }
+
   Future<Map<String, dynamic>> login(String email, String password) async {
-  final response = await _dio.post(
-    '/login',
-    data: FormData.fromMap({
-      'email': email,
-      'password': password,
-    }),
-  );
-  userId = response.data['user_id'];
-  userEmail = email;
-  token = response.data['access_token'];
-  return Map<String, dynamic>.from(response.data);
-}
+    final response = await _dio.post(
+      '/login',
+      data: {
+        'email': email,
+        'password': password,
+      },
+    );
+    userId = response.data['user_id'];
+    userEmail = email;
+    token = response.data['access_token'];
+    return Map<String, dynamic>.from(response.data);
+  }
 
   Future<void> register(String email, String password) async {
     final response = await _dio.post('/register', data: {
