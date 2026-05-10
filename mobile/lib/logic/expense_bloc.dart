@@ -3,24 +3,19 @@ import '../models/expense.dart';
 import '../data/expense_api_service.dart';
 
 abstract class ExpenseEvent {}
-
 class LoadExpenses extends ExpenseEvent {}
-
 class ChangeDisplayCurrency extends ExpenseEvent {
   final String currency;
   ChangeDisplayCurrency(this.currency);
 }
-
 class ChangeDefaultCurrency extends ExpenseEvent {
   final String currency;
   ChangeDefaultCurrency(this.currency);
 }
-
 class SyncExpenses extends ExpenseEvent {
   final List<Expense> expenses;
   SyncExpenses(this.expenses);
 }
-
 class ProcessReceiptEvent extends ExpenseEvent {
   final dynamic image;
   final dynamic bytes;
@@ -28,9 +23,7 @@ class ProcessReceiptEvent extends ExpenseEvent {
 }
 
 abstract class ExpenseState {}
-
 class ExpenseLoading extends ExpenseState {}
-
 class ExpenseLoaded extends ExpenseState {
   final List<Expense> expenses;
   final String displayCurrency;
@@ -38,8 +31,8 @@ class ExpenseLoaded extends ExpenseState {
 
   ExpenseLoaded({
     required this.expenses,
-    this.displayCurrency = "RON",
-    this.defaultCurrency = "RON",
+    required this.displayCurrency,
+    required this.defaultCurrency,
   });
 
   ExpenseLoaded copyWith({
@@ -61,10 +54,21 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
   ExpenseBloc(this.apiService) : super(ExpenseLoading()) {
     on<LoadExpenses>((event, emit) async {
       try {
-        final expenses = await apiService.fetchExpenses();
-        emit(ExpenseLoaded(expenses: expenses));
+        final results = await Future.wait([
+          apiService.fetchExpenses(),
+          apiService.fetchUserCurrency(),
+        ]);
+
+        final expenses = results[0] as List<Expense>;
+        final prefCurrency = results[1] as String;
+
+        emit(ExpenseLoaded(
+          expenses: expenses,
+          displayCurrency: prefCurrency,
+          defaultCurrency: prefCurrency,
+        ));
       } catch (e) {
-        emit(ExpenseLoaded(expenses: []));
+        emit(ExpenseLoaded(expenses: [], displayCurrency: "RON", defaultCurrency: "RON"));
       }
     });
 
@@ -74,9 +78,16 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       }
     });
 
-    on<ChangeDefaultCurrency>((event, emit) {
+    on<ChangeDefaultCurrency>((event, emit) async {
       if (state is ExpenseLoaded) {
-        emit((state as ExpenseLoaded).copyWith(defaultCurrency: event.currency));
+        final currentState = state as ExpenseLoaded;
+        try {
+          await apiService.updateUserCurrency(event.currency);
+          emit(currentState.copyWith(
+            defaultCurrency: event.currency,
+            displayCurrency: event.currency,
+          ));
+        } catch (e) {}
       }
     });
 

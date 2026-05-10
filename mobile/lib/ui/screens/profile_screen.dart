@@ -41,8 +41,20 @@ class ProfileScreen extends StatelessWidget {
                               value: currentDefault, isDense: true, dropdownColor: const Color(0xFFF4EBD9),
                               style: const TextStyle(fontFamily: 'Georgia', fontSize: 16, color: vintageInk),
                               items: _supportedCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                              onChanged: (val) { if (val != null) context.read<ExpenseBloc>().add(ChangeDefaultCurrency(val)); },
-                            ),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  // This triggers the ChangeDefaultCurrency event in the Bloc,
+                                  // which calls apiService.updateUserCurrency(val)
+                                  context.read<ExpenseBloc>().add(ChangeDefaultCurrency(val));
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text("Preferred tender updated to $val in the ledger."),
+                                      backgroundColor: const Color(0xFF8D7B68),
+                                    ),
+                                  );
+                                }
+                              },                            ),
                           ),
                         ),
                       );

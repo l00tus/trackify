@@ -29,6 +29,15 @@ class ExpenseApiService {
     }
   }
 
+  Future<String> fetchUserCurrency() async {
+    try {
+      final response = await _dio.get('/preferences/$userId');
+      return response.data['currency'] ?? "RON";
+    } catch (e) {
+      return "RON";
+    }
+  }
+
   Future<List<Expense>> fetchExpenses() async {
     try {
       final response = await _dio.get('/expenses/$userId');
@@ -50,6 +59,17 @@ class ExpenseApiService {
         "file": await MultipartFile.fromFile(image.path, filename: "receipt.jpg"),
       });
       return await _sendToAi(formData);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<void> updateUserCurrency(String currency) async {
+    try {
+      await _dio.post(
+        '/preferences/$userId',
+        data: {"currency": currency},
+      );
     } catch (e) {
       rethrow;
     }
