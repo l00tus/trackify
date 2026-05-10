@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../models/expense.dart';
 import '../data/expense_api_service.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 abstract class ExpenseEvent {}
 class LoadExpenses extends ExpenseEvent {}
@@ -50,6 +51,7 @@ class ExpenseLoaded extends ExpenseState {
 
 class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
   final ExpenseApiService apiService;
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   ExpenseBloc(this.apiService) : super(ExpenseLoading()) {
     on<LoadExpenses>((event, emit) async {
@@ -83,6 +85,7 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         final currentState = state as ExpenseLoaded;
         try {
           await apiService.updateUserCurrency(event.currency);
+          _playCurrencySound(event.currency);
           emit(currentState.copyWith(
             defaultCurrency: event.currency,
             displayCurrency: event.currency,
@@ -117,5 +120,9 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         } catch (e) {}
       }
     });
+  }
+
+  void _playCurrencySound(String currency) async {
+    await _audioPlayer.play(AssetSource('sounds/$currency.mp3'));
   }
 }
