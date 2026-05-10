@@ -8,7 +8,11 @@ import '../models/expense.dart';
 class ExpenseApiService {
   static const String _baseUrl = 'http://localhost:8000';
   late final Dio _dio;
-  final String userId = "user_123";
+
+  Future<List<Expense>> fetchExpenses(String userId) async {
+    final response = await _dio.get('/expenses/$userId');
+    return (response.data as List).map((e) => Expense.fromJson(Map<String, dynamic>.from(e))).toList();
+  }
 
   ExpenseApiService() {
     _dio = Dio(BaseOptions(
@@ -29,7 +33,7 @@ class ExpenseApiService {
     }
   }
 
-  Future<String> fetchUserCurrency() async {
+  Future<String> fetchUserCurrency(String userId) async {
     try {
       final response = await _dio.get('/preferences/$userId');
       return response.data['currency'] ?? "RON";
@@ -38,7 +42,7 @@ class ExpenseApiService {
     }
   }
 
-  Future<List<Expense>> fetchExpenses() async {
+  Future<List<Expense>> fetchExpenses(String userId) async {
     try {
       final response = await _dio.get('/expenses/$userId');
       final dynamic rawData = response.data is Map ? response.data['data'] : response.data;
@@ -52,7 +56,7 @@ class ExpenseApiService {
     }
   }
 
-  Future<Expense> uploadReceipt(File image) async {
+  Future<Expense> uploadReceipt(String userId, File image) async {
     try {
       FormData formData = FormData.fromMap({
         "user_id": userId,
@@ -64,7 +68,7 @@ class ExpenseApiService {
     }
   }
 
-  Future<void> updateUserCurrency(String currency) async {
+  Future<void> updateUserCurrency(String userId, String currency) async {
     try {
       await _dio.post(
         '/preferences/$userId',
@@ -75,7 +79,7 @@ class ExpenseApiService {
     }
   }
 
-  Future<Expense> uploadReceiptWeb(Uint8List bytes) async {
+  Future<Expense> uploadReceiptWeb(String userId, Uint8List bytes) async {
     try {
       FormData formData = FormData.fromMap({
         "user_id": userId,
