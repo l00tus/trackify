@@ -8,7 +8,9 @@ import '../models/expense.dart';
 class ExpenseApiService {
   static const String _baseUrl = 'http://localhost:8000';
   late final Dio _dio;
-  final String userId = "user_123";
+
+  String? userId;
+  String? token;
 
   ExpenseApiService() {
     _dio = Dio(BaseOptions(
@@ -29,7 +31,26 @@ class ExpenseApiService {
     }
   }
 
+  Future<void> login(String email, String password) async {
+    final response = await _dio.post('/login', data: {
+      "email": email,
+      "password": password,
+    });
+    userId = response.data['user_id'];
+    token = response.data['access_token'];
+  }
+
+  Future<void> register(String email, String password) async {
+    final response = await _dio.post('/register', data: {
+      "email": email,
+      "password": password,
+    });
+    userId = response.data['user_id'];
+    token = response.data['access_token'];
+  }
+
   Future<String> fetchUserCurrency() async {
+    if (userId == null) return "RON";
     try {
       final response = await _dio.get('/preferences/$userId');
       return response.data['currency'] ?? "RON";
@@ -39,10 +60,10 @@ class ExpenseApiService {
   }
 
   Future<List<Expense>> fetchExpenses() async {
+    if (userId == null) return [];
     try {
       final response = await _dio.get('/expenses/$userId');
       final dynamic rawData = response.data is Map ? response.data['data'] : response.data;
-
       if (rawData is List) {
         return rawData.map((e) => Expense.fromJson(Map<String, dynamic>.from(e))).toList();
       }
@@ -53,38 +74,23 @@ class ExpenseApiService {
   }
 
   Future<Expense> uploadReceipt(File image) async {
-    try {
-      FormData formData = FormData.fromMap({
-        "user_id": userId,
-        "file": await MultipartFile.fromFile(image.path, filename: "receipt.jpg"),
-      });
-      return await _sendToAi(formData);
-    } catch (e) {
-      rethrow;
-    }
+    FormData formData = FormData.fromMap({
+      "user_id": userId,
+      "file": await MultipartFile.fromFile(image.path, filename: "receipt.jpg"),
+    });
+    return await _sendToAi(formData);
   }
 
   Future<void> updateUserCurrency(String currency) async {
-    try {
-      await _dio.post(
-        '/preferences/$userId',
-        data: {"currency": currency},
-      );
-    } catch (e) {
-      rethrow;
-    }
+    await _dio.post('/preferences/$userId', data: {"currency": currency});
   }
 
   Future<Expense> uploadReceiptWeb(Uint8List bytes) async {
-    try {
-      FormData formData = FormData.fromMap({
-        "user_id": userId,
-        "file": MultipartFile.fromBytes(bytes, filename: "receipt.jpg"),
-      });
-      return await _sendToAi(formData);
-    } catch (e) {
-      rethrow;
-    }
+    FormData formData = FormData.fromMap({
+      "user_id": userId,
+      "file": MultipartFile.fromBytes(bytes, filename: "receipt.jpg"),
+    });
+    return await _sendToAi(formData);
   }
 
   Future<Expense> _sendToAi(FormData formData) async {
@@ -96,13 +102,6 @@ class ExpenseApiService {
   }
 
   Future<void> syncExpenses(List<Expense> expenses) async {
-    try {
-      await _dio.post(
-        '/sync-expenses',
-        data: expenses.map((e) => e.toJson()).toList(),
-      );
-    } catch (e) {
-      rethrow;
-    }
+    await _dio.post('/sync-expenses', data: expenses.map((e) => e.toJson()).toList());
   }
 }

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../data/expense_api_service.dart';
+import '../../logic/expense_bloc.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -9,13 +12,28 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _userController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
-  void _handleLogin() {
-    if (_userController.text == "user123" && _passController.text == "user123") {
-      Navigator.pushReplacementNamed(context, '/home');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Credentials not recognized."), backgroundColor: Color(0xFFA64D32)));
+  bool _isLoading = false;
+
+  void _handleLogin() async {
+    setState(() => _isLoading = true);
+    try {
+      final api = context.read<ExpenseApiService>();
+      await api.login(_userController.text, _passController.text);
+      if (mounted) {
+        context.read<ExpenseBloc>().add(LoadExpenses());
+        Navigator.pushReplacementNamed(context, '/home');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Authentication failed."), backgroundColor: Color(0xFFA64D32))
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+
   @override
   Widget build(BuildContext context) {
     const vintageBg = Color(0xFFF4EBD9);
@@ -38,11 +56,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     const Center(child: Text("AUTHENTICATION", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
                     const Divider(color: Color(0xFF8D7B68), thickness: 1.5),
-                    TextField(controller: _userController, decoration: const InputDecoration(labelText: "Identifier", enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF8D7B68))))),
+                    TextField(controller: _userController, decoration: const InputDecoration(labelText: "Email Address", enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF8D7B68))))),
                     const SizedBox(height: 15),
                     TextField(controller: _passController, obscureText: true, decoration: const InputDecoration(labelText: "Passphrase", enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF8D7B68))))),
                     const SizedBox(height: 30),
-                    ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: vintageInk, foregroundColor: vintageBg, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero)), onPressed: _handleLogin, child: const Text("ACCESS LEDGER")),
+                    _isLoading
+                        ? const CircularProgressIndicator(color: vintageInk)
+                        : ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: vintageInk, foregroundColor: vintageBg, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero)),
+                        onPressed: _handleLogin,
+                        child: const Text("ACCESS LEDGER")
+                    ),
                     const SizedBox(height: 10),
                     TextButton(onPressed: () => Navigator.pushNamed(context, '/register'), child: const Text("NEW SIGNATORY? REGISTER HERE", style: TextStyle(color: vintageInk, fontSize: 10))),
                   ],

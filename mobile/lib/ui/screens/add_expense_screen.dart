@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import '../../logic/expense_bloc.dart';
 import '../../models/expense.dart';
+import '../../data/expense_api_service.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   const AddExpenseScreen({super.key});
@@ -48,15 +49,19 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final String store = _storeController.text.trim();
     final double? amount = double.tryParse(_amountController.text);
     if (store.isEmpty || amount == null) return;
+
+    final apiService = context.read<ExpenseApiService>();
+
     final newExpense = Expense(
       id: const Uuid().v4(),
-      userId: "user_123",
+      userId: apiService.userId ?? "", // Use the authenticated ID
       storeName: store,
       amount: amount,
       date: _selectedDate,
       category: _selectedCategory,
       currency: "RON",
     );
+
     context.read<ExpenseBloc>().add(SyncExpenses([newExpense]));
     _clearForm();
   }
