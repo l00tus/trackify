@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:trackify/data/expense_api_service.dart';
@@ -6,7 +10,11 @@ import 'package:trackify/logic/expense_bloc.dart';
 import 'package:trackify/ui/screens/dashboard_screen.dart';
 import 'package:trackify/ui/screens/add_expense_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const MyApp());
 }
 
@@ -18,6 +26,7 @@ class MyApp extends StatelessWidget {
     return MultiRepositoryProvider(
       providers: [
         RepositoryProvider(create: (context) => ExpenseApiService()),
+        RepositoryProvider(create: (context) => AuthRepository()),
       ],
       child: BlocProvider(
         create: (context) => ExpenseBloc(
