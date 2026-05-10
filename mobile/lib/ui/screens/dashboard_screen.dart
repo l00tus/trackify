@@ -291,7 +291,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String _getCategoryFromIndex(List<Expense> expenses, String targetCurrency, int index) {
     final totals = <String, double>{};
+    final totals = <String, double>{};
     for (var e in expenses) {
+      totals[e.category] = (totals[e.category] ?? 0) + _convert(e.amount, targetCurrency);
       totals[e.category] = (totals[e.category] ?? 0) + _convert(e.amount, targetCurrency);
     }
     return totals.keys.elementAt(index);
@@ -299,7 +301,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<PieChartSectionData> _generateCategorySections(List<Expense> expenses, String targetCurrency) {
     final totals = <String, double>{};
+    final totals = <String, double>{};
     for (var e in expenses) {
+      totals[e.category] = (totals[e.category] ?? 0) + _convert(e.amount, targetCurrency);
       totals[e.category] = (totals[e.category] ?? 0) + _convert(e.amount, targetCurrency);
     }
     return totals.entries.map((entry) => PieChartSectionData(
@@ -313,7 +317,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<PieChartSectionData> _generateStoreSections(List<Expense> expenses, String targetCurrency) {
     final storeTotals = <String, double>{};
+    final storeTotals = <String, double>{};
     for (var e in expenses) {
+      storeTotals[e.storeName] = (storeTotals[e.storeName] ?? 0) + _convert(e.amount, targetCurrency);
       storeTotals[e.storeName] = (storeTotals[e.storeName] ?? 0) + _convert(e.amount, targetCurrency);
     }
     final colors = [const Color(0xFF432818), const Color(0xFF5E503F), const Color(0xFF22333B), const Color(0xFF4F6D7A)];

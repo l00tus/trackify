@@ -44,6 +44,16 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     }
   }
 
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && picked != _selectedDate) setState(() => _selectedDate = picked);
+  }
+
   void _submitManualEntry() {
     final String store = _storeController.text.trim();
     final double? amount = double.tryParse(_amountController.text);
@@ -156,6 +166,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 40),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildVintageIconButton(Icons.camera_alt, "SCAN RECEIPT", () => _pickImage(context, ImageSource.camera)),
+                _buildVintageIconButton(Icons.photo_library, "FROM GALLERY", () => _pickImage(context, ImageSource.gallery)),
+              ],
             ),
             const SizedBox(height: 40),
             Row(
