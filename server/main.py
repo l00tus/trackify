@@ -11,7 +11,9 @@ from dotenv import load_dotenv
 from io import BytesIO
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import DBExpense, ExpenseSchema, PreferenceUpdate, UserPreference, get_db, init_db
+from database import DBExpense, ExpenseSchema, PreferenceUpdate, TokenResponse, UserCreate, UserPreference, DBUser, get_db, init_db
+from server import security
+from security import get_password_hash
 from socket_manager import manager
 
 load_dotenv()
@@ -184,6 +186,57 @@ def set_preferences(user_id: str, prefs: PreferenceUpdate, db: Session = Depends
     return {
         "success": True, 
         "currency": pref.currency.value
+    }
+    
+app.post("/register", response_model=TokenResponse)
+def register_user(user: UserCreate, db: Session = Depends(get_db)):
+    existing_user = db.query(DBUser).filter(DBUser.email == user.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    hashed_pw = security.get_password_hash(user.password)
+    token = security.generate_session_token()
+    
+    new_user = DBUser(
+        email=user.email, 
+        hashed_password=hashed_pw,
+        session_token=token
+    )
+    
+    db.add(new_user)
+    
+    db.flush() 
+    
+    new_prefs = UserPreference(
+        user_id=new_user.id
+    )
+    db.add(new_prefs)
+    
+    db.commit()
+    db.refresh(new_user)
+    
+    return {
+        "access_token": token, 
+        "token_type": "bearer", 
+        "user_id": new_user.id
+    }
+
+@app.post("/login", response_model=TokenResponse)
+def login_user(user: UserCreate, db: Session = Depends(get_db)):
+    db_user = db.query(DBUser).filter(DBUser.email == user.email).first()
+    
+    if not db_user or not security.verify_password(user.password, db_user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    token = security.generate_session_token()
+    db_user.session_token = token
+    
+    db.commit()
+    
+    return {
+        "access_token": token, 
+        "token_type": "bearer", 
+        "user_id": db_user.id
     }
     
 @app.websocket("/ws/{user_id}")

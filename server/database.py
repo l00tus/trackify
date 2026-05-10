@@ -1,7 +1,8 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, Enum as SQLEnum
+import uuid
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, Enum as SQLEnum, ForeignKey
 from sqlalchemy.orm import sessionmaker, declarative_base
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from enum import Enum
 from dotenv import load_dotenv
 
@@ -65,9 +66,28 @@ class PreferenceUpdate(BaseModel):
 
 class UserPreference(Base):
     __tablename__ = "user_preferences"
-    user_id = Column(String, primary_key=True, index=True)
-    currency = currency = Column(SQLEnum(AllowedCurrencies), default=AllowedCurrencies.RON, nullable=False)
+    user_id = Column(String, ForeignKey("users.id"), primary_key=True, index=True)
+    currency = Column(SQLEnum(AllowedCurrencies), default=AllowedCurrencies.RON, nullable=False)
+
+class DBUser(Base):
+    __tablename__ = "users"
     
+    id = Column(String, primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    
+    session_token = Column(String, unique=True, index=True, nullable=True)
+   
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_id: str
+    
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 
