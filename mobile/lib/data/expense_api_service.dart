@@ -72,7 +72,7 @@ class ExpenseApiService {
     token = response.data['access_token'];
   }
 
-  Future<String> fetchUserCurrency() async {
+  Future<String> fetchUserCurrency(String uid) async {
     if (userId == null) return "RON";
     try {
       final response = await _dio.get('/preferences/$userId');
@@ -82,7 +82,7 @@ class ExpenseApiService {
     }
   }
 
-  Future<List<Expense>> fetchExpenses() async {
+  Future<List<Expense>> fetchExpenses(String uid) async {
     if (userId == null) return [];
     try {
       final response = await _dio.get('/expenses/$userId');
@@ -96,21 +96,21 @@ class ExpenseApiService {
     }
   }
 
-  Future<Expense> uploadReceipt(File image) async {
+  Future<Expense> uploadReceipt(File image, String uid) async {
     FormData formData = FormData.fromMap({
-      "user_id": userId,
+      "user_id": uid,
       "file": await MultipartFile.fromFile(image.path, filename: "receipt.jpg"),
     });
     return await _sendToAi(formData);
   }
 
-  Future<void> updateUserCurrency(String currency) async {
-    await _dio.post('/preferences/$userId', data: {"currency": currency});
+  Future<void> updateUserCurrency(String currency, String uid) async {
+    await _dio.post('/preferences/$uid', data: {"currency": currency});
   }
 
-  Future<Expense> uploadReceiptWeb(Uint8List bytes) async {
+  Future<Expense> uploadReceiptWeb(Uint8List bytes, String uid) async {
     FormData formData = FormData.fromMap({
-      "user_id": userId,
+      "user_id": uid,
       "file": MultipartFile.fromBytes(bytes, filename: "receipt.jpg"),
     });
     return await _sendToAi(formData);

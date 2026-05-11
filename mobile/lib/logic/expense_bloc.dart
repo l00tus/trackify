@@ -33,6 +33,8 @@ class SyncExpenses extends ExpenseEvent {
 
 class TriggerSync extends ExpenseEvent {} // call this on connectivity restore
 
+class TriggerSilentRefresh extends ExpenseEvent {} // call this when you want to refresh without showing loading spinner
+
 class ProcessReceiptEvent extends ExpenseEvent {
   final dynamic image;
   final dynamic bytes;
@@ -78,7 +80,6 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
   final SocketService socketService;
   final AudioPlayer _audioPlayer = AudioPlayer();
   final ExpenseLocalService localService;
-  // final String userId; // pass in from auth after login
 
   ExpenseBloc({
     required this.apiService,
@@ -86,37 +87,64 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
     required this.localService,
   }) : super(ExpenseLoading()) {
 
-
-    on<LoadExpenses>((event, emit) async {
-      final uid = apiService.userId ?? '';
-
-      // Initialize WebSocket connection when expenses are loaded
-      if (uid.isNotEmpty) {
-        socketService.connect(uid, (data) {
-          if (data['type'] == 'RECEIPT_PROCESSED') {
-            add(LoadExpenses()); // Auto-refresh the list
-          }
-        });
+  on<TriggerSilentRefresh>((event, emit) async {
+      if (state is ExpenseLoaded) {
+        final current = state as ExpenseLoaded;
+        final uid = apiService.userId ?? '';
+        try {
+          final serverExpenses = await apiService.fetchExpenses(uid);
+          await localService.replaceAllFromServer(serverExpenses, uid);
+          emit(current.copyWith(expenses: serverExpenses));
+        } catch (_) {}
       }
-            final unsynced = await localService.getUnsyncedExpenses(uid);
-      
+    });
 
-      try {
-        final results = await Future.wait([
-          apiService.fetchExpenses(),
-          apiService.fetchUserCurrency(),
-        ]);
+  on<LoadExpenses>((event, emit) async {
+    final uid = apiService.userId ?? '';
 
-        final expenses = results[0] as List<Expense>;
-        final prefCurrency = results[1] as String;
+  if (uid.isNotEmpty) {
+    socketService.connect(uid, (data) {
+      if (data['type'] == 'RECEIPT_PROCESSED') {
+        // Trigger a refresh but WITHOUT the loading spinner
+        add(TriggerSilentRefresh()); 
+      }
+    });
+  }
 
-        emit(ExpenseLoaded(
-          expenses: expenses,
-          displayCurrency: prefCurrency,
-          defaultCurrency: prefCurrency,
-        ));
-      } catch (e) {
-        emit(ExpenseLoaded(expenses: [], displayCurrency: "RON", defaultCurrency: "RON"));
+      final localExpenses = await localService.getAllExpenses(uid);
+      final unsynced = await localService.getUnsyncedExpenses(uid);
+      final prefCurrency = await _safeGetCurrency();
+
+      emit(ExpenseLoaded(
+        expenses: localExpenses,
+        displayCurrency: prefCurrency,
+        defaultCurrency: prefCurrency,
+        hasPendingSync: unsynced.isNotEmpty,
+      ));
+
+      // 4. Try to fetch from server if online
+      if (await _isOnline()) {
+        try {
+          final results = await Future.wait([
+            apiService.fetchExpenses(uid), 
+            apiService.fetchUserCurrency(uid), 
+          ]);
+
+          final serverExpenses = results[0] as List<Expense>;
+          final serverCurrency = results[1] as String;
+
+          // Replace local cache with fresh server data
+          await localService.replaceAllFromServer(serverExpenses, uid);
+
+          emit(ExpenseLoaded(
+            expenses: serverExpenses,
+            displayCurrency: serverCurrency,
+            defaultCurrency: serverCurrency,
+            hasPendingSync: false,
+          ));
+        } catch (e) {
+          // Keep showing local data if server fails
+        }
       }
     });
 
@@ -126,13 +154,39 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       }
     });
 
-    on<ChangeDefaultCurrency>((event, emit) async {
+    on<AddExpenseLocally>((event, emit) async {
       if (state is ExpenseLoaded) {
         final current = state as ExpenseLoaded;
+        
+        print("DEBUG: Saving to SQLite locally...");
+        await localService.insertExpense(event.expense, isSynced: false);
+        
+        final updatedList = [event.expense, ...current.expenses];
+        emit(current.copyWith(expenses: updatedList, hasPendingSync: true));
+
+        if (await _isOnline()) {
+          print("DEBUG: Online. Syncing to backend...");
+          try {
+            await apiService.syncExpenses([event.expense]);
+            await localService.markAllSynced([event.expense.id]);
+            print("DEBUG: Sync success.");
+            emit((state as ExpenseLoaded).copyWith(hasPendingSync: false));
+          } catch (e) {
+            print("DEBUG: Sync failed: $e");
+          }
+        }
+      }
+    });
+
+    on<ChangeDefaultCurrency>((event, emit) async {
+      if (state is ExpenseLoaded) {
+        final current = state as ExpenseLoaded; // Fixed 'current' variable
         try {
-          await apiService.updateUserCurrency(event.currency);
+          await apiService.updateUserCurrency(event.currency, apiService.userId!);
           _playCurrencySound(event.currency);
-          emit(currentState.copyWith(
+          
+          // FIX: Changed 'currentState' to 'current'
+          emit(current.copyWith(
             defaultCurrency: event.currency,
             displayCurrency: event.currency,
           ));
@@ -142,16 +196,18 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
 
     on<ProcessReceiptEvent>((event, emit) async {
       if (state is ExpenseLoaded) {
+        final current = state as ExpenseLoaded;
+        final uid = apiService.userId ?? '';
         try {
           Expense newExpense;
           if (event.bytes != null) {
-            newExpense = await apiService.uploadReceiptWeb(event.bytes);
+            newExpense = await apiService.uploadReceiptWeb(event.bytes, apiService.userId!);
           } else {
-            newExpense = await apiService.uploadReceipt(event.image);
+            newExpense = await apiService.uploadReceipt(event.image, uid);
           }
-          // Receipt came from server so mark as synced
+          
+          // Mark as synced since it came from server
           await localService.insertExpense(newExpense, isSynced: true);
-          final current = state as ExpenseLoaded;
           emit(current.copyWith(expenses: [newExpense, ...current.expenses]));
         } catch (_) {}
       }
@@ -168,20 +224,36 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         } catch (_) {}
       }
     });
+
+    on<TriggerSync>((event, emit) async {
+      if (state is! ExpenseLoaded) return;
+      final uid = apiService.userId ?? '';
+      final unsynced = await localService.getUnsyncedExpenses(uid);
+      if (unsynced.isNotEmpty && await _isOnline()) {
+        try {
+          await apiService.syncExpenses(unsynced);
+          await localService.markAllSynced(unsynced.map((e) => e.id).toList());
+          add(LoadExpenses()); 
+        } catch (_) {}
+      }
+    });
   }
 
   void _playCurrencySound(String currency) async {
-    await _audioPlayer.play(AssetSource('sounds/$currency.mp3'));
+    try {
+      await _audioPlayer.play(AssetSource('sounds/$currency.mp3'));
+    } catch (_) {}
   }
 
   Future<bool> _isOnline() async {
-    final result = await Connectivity().checkConnectivity();
-    return result != ConnectivityResult.none;
+    final List<ConnectivityResult> result = await Connectivity().checkConnectivity();
+    return !result.contains(ConnectivityResult.none);
   }
 
   Future<String> _safeGetCurrency() async {
     try {
-      return await apiService.fetchUserCurrency();
+      final uid = apiService.userId ?? '';
+      return await apiService.fetchUserCurrency(uid);
     } catch (_) {
       return 'RON';
     }

@@ -62,7 +62,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       currency: "RON",
     );
 
-    context.read<ExpenseBloc>().add(SyncExpenses([newExpense]));
+    context.read<ExpenseBloc>().add(AddExpenseLocally(newExpense));
     _clearForm();
   }
 
