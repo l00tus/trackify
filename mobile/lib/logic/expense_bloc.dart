@@ -3,6 +3,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:uuid/uuid.dart';
 import '../models/expense.dart';
 import '../data/expense_api_service.dart';
+import '../data/socket_service.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../data/expense_local_service.dart';
 
 abstract class ExpenseEvent {}
@@ -73,84 +75,51 @@ class ExpenseLoaded extends ExpenseState {
 
 class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
   final ExpenseApiService apiService;
+  final SocketService socketService;
+  final AudioPlayer _audioPlayer = AudioPlayer();
   final ExpenseLocalService localService;
   // final String userId; // pass in from auth after login
 
   ExpenseBloc({
     required this.apiService,
+    required this.socketService,
     required this.localService,
   }) : super(ExpenseLoading()) {
 
+
     on<LoadExpenses>((event, emit) async {
       final uid = apiService.userId ?? '';
-      print('debug userId in bloc: $uid');
-      final localExpenses = await localService.getAllExpenses(uid);
-      final prefCurrency = await _safeGetCurrency();
 
-      final unsynced = await localService.getUnsyncedExpenses(uid);
-      emit(ExpenseLoaded(
-        expenses: localExpenses,
-        displayCurrency: prefCurrency,
-        defaultCurrency: prefCurrency,
-        hasPendingSync: unsynced.isNotEmpty,
-      ));
-
-      if (await _isOnline()) {
-        try {
-          final serverExpenses = await apiService.fetchExpenses();
-          print('debug server express count: ${serverExpenses.length} expenses');
-          await localService.replaceAllFromServer(serverExpenses, uid);
-          emit((state as ExpenseLoaded).copyWith(
-            expenses: serverExpenses,
-            hasPendingSync: false,
-          ));
-        } catch (e) {
-          print('debug fetchExpenses error: $e');
-          // Server failed — stay on local data, that's fine
-        }
-      }
-    });
-
-    on<AddExpenseLocally>((event, emit) async {
-      await localService.insertExpense(event.expense, isSynced: false);
-
-      if (state is ExpenseLoaded) {
-        final current = state as ExpenseLoaded;
-        final updated = [event.expense, ...current.expenses];
-
-        // Try to sync immediately if online
-        if (await _isOnline()) {
-          try {
-            await apiService.syncExpenses([event.expense]);
-            await localService.markSynced(event.expense.id);
-            emit(current.copyWith(expenses: updated, hasPendingSync: false));
-          } catch (_) {
-            emit(current.copyWith(expenses: updated, hasPendingSync: true));
+      // Initialize WebSocket connection when expenses are loaded
+      if (uid.isNotEmpty) {
+        socketService.connect(uid, (data) {
+          if (data['type'] == 'RECEIPT_PROCESSED') {
+            add(LoadExpenses()); // Auto-refresh the list
           }
-        } else {
-          emit(current.copyWith(expenses: updated, hasPendingSync: true));
-        }
+        });
+      }
+            final unsynced = await localService.getUnsyncedExpenses(uid);
+      
+
+      try {
+        final results = await Future.wait([
+          apiService.fetchExpenses(),
+          apiService.fetchUserCurrency(),
+        ]);
+
+        final expenses = results[0] as List<Expense>;
+        final prefCurrency = results[1] as String;
+
+        emit(ExpenseLoaded(
+          expenses: expenses,
+          displayCurrency: prefCurrency,
+          defaultCurrency: prefCurrency,
+        ));
+      } catch (e) {
+        emit(ExpenseLoaded(expenses: [], displayCurrency: "RON", defaultCurrency: "RON"));
       }
     });
 
-     on<TriggerSync>((event, emit) async {
-      if (state is! ExpenseLoaded) return;
-      final current = state as ExpenseLoaded;
-      final uid = apiService.userId ?? '';
-
-      final unsynced = await localService.getUnsyncedExpenses(uid);
-      if (unsynced.isEmpty) return;
-
-      if (await _isOnline()) {
-        try {
-          await apiService.syncExpenses(unsynced);
-          await localService.markAllSynced(unsynced.map((e) => e.id).toList());
-          emit(current.copyWith(hasPendingSync: false));
-        } catch (_) {
-          // Stay pending, try again next time
-        }
-      }
-    });
     on<ChangeDisplayCurrency>((event, emit) {
       if (state is ExpenseLoaded) {
         emit((state as ExpenseLoaded).copyWith(displayCurrency: event.currency));
@@ -162,7 +131,8 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         final current = state as ExpenseLoaded;
         try {
           await apiService.updateUserCurrency(event.currency);
-          emit(current.copyWith(
+          _playCurrencySound(event.currency);
+          emit(currentState.copyWith(
             defaultCurrency: event.currency,
             displayCurrency: event.currency,
           ));
@@ -198,6 +168,10 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         } catch (_) {}
       }
     });
+  }
+
+  void _playCurrencySound(String currency) async {
+    await _audioPlayer.play(AssetSource('sounds/$currency.mp3'));
   }
 
   Future<bool> _isOnline() async {

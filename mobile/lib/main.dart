@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:trackify/data/expense_api_service.dart';
 import 'package:trackify/data/expense_local_service.dart';
+import 'package:trackify/data/socket_service.dart';
 import 'package:trackify/logic/expense_bloc.dart';
 import 'package:trackify/ui/screens/dashboard_screen.dart';
 import 'package:trackify/ui/screens/add_expense_screen.dart';
@@ -35,12 +36,14 @@ class MyApp extends StatelessWidget {
     return MultiRepositoryProvider(
       providers: [
         RepositoryProvider(create: (context) => ExpenseApiService()),
-        RepositoryProvider(create: (_) => ExpenseLocalService()),
+        RepositoryProvider(create: (context) => ExpenseLocalService()),
+        RepositoryProvider(create: (context) => SocketService()),
       ],
        child: BlocProvider(
         create: (context) => ExpenseBloc(
           apiService: context.read<ExpenseApiService>(),
           localService: context.read<ExpenseLocalService>(),
+          socketService: context.read<SocketService>(),
         )..add(LoadExpenses()),
         child: _ConnectivityListener(
         child: MaterialApp(
@@ -123,6 +126,42 @@ class _MainNavigationState extends State<MainNavigation> {
     const AddExpenseScreen(),
     const ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _setupSocketListener();
+  }
+
+  void _setupSocketListener() {
+    final apiService = context.read<ExpenseApiService>();
+    final socketService = context.read<SocketService>();
+    final userId = apiService.userId ?? "";
+
+    if (userId.isNotEmpty) {
+      socketService.connect(userId, (data) {
+        if (data['type'] == 'RECEIPT_PROCESSED' && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                data['message'] ?? 'Receipt processed successfully!',
+                style: const TextStyle(
+                  fontFamily: 'Georgia',
+                  color: Color(0xFFF4EBD9),
+                ),
+              ),
+              backgroundColor: const Color(0xFF2B2118),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 4),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          );
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../data/expense_api_service.dart';
@@ -11,114 +12,155 @@ class ProfileScreen extends StatelessWidget {
     "DEM", "GRD", "ITL", "FRF", "ESP", "ATS"
   ];
 
+  String _generateRandomCardNumber() {
+    final random = Random();
+    String card = "";
+    for (int i = 0; i < 4; i++) {
+      card += (1000 + random.nextInt(9000)).toString();
+      if (i < 3) card += " ";
+    }
+    return card;
+  }
+
   @override
   Widget build(BuildContext context) {
     const vintageInk = Color(0xFF2B2118);
-    const vintageBorder = BorderSide(color: Color(0xFF8D7B68), width: 1.5);
+    const goldLeaf = Color(0xFFD4AF37);
 
     final apiService = context.read<ExpenseApiService>();
-    final String userEmail = apiService.userEmail ?? "Unknown Signatory";
+    final String userEmail = apiService.userEmail ?? "AUDITOR@LEDGER.COM";
+    final String cardNumber = _generateRandomCardNumber();
 
     return Scaffold(
-      appBar: AppBar(title: const Text("OFFICIAL PROFILE")),
+      appBar: AppBar(title: const Text("CREDENTIALS")),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  border: Border.all(color: const Color(0xFF8D7B68), width: 2),
-                  shape: BoxShape.circle,
-                ),
-                child: const CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Color(0xFFD6C5A0),
-                  child: Icon(Icons.person, size: 60, color: vintageInk),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              userEmail.toUpperCase(),
-              style: const TextStyle(
-                fontFamily: 'Georgia',
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: vintageInk,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const Text("AUTHORIZED AUDITOR", style: TextStyle(fontSize: 10, color: Color(0xFF5E503F), letterSpacing: 2)),
-            const SizedBox(height: 30),
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFFEAD8B1),
-                border: Border.all(color: const Color(0xFF8D7B68), width: 3),
-              ),
-              child: Column(
-                children: [
-                  _buildProfileItem(Icons.alternate_email, "IDENTIFIER", userEmail, vintageBorder),
-                  BlocBuilder<ExpenseBloc, ExpenseState>(
-                    builder: (context, state) {
-                      String currentDefault = (state is ExpenseLoaded) ? state.defaultCurrency : "RON";
-                      return Container(
-                        decoration: const BoxDecoration(border: Border(bottom: vintageBorder)),
-                        child: ListTile(
-                          leading: const Icon(Icons.payments, color: vintageInk),
-                          title: const Text("DEFAULT TENDER", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF5E503F))),
-                          subtitle: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: currentDefault,
-                              isDense: true,
-                              dropdownColor: const Color(0xFFF4EBD9),
-                              style: const TextStyle(fontFamily: 'Georgia', fontSize: 16, color: vintageInk),
-                              items: _supportedCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                              onChanged: (val) {
-                                if (val != null) {
-                                  context.read<ExpenseBloc>().add(ChangeDefaultCurrency(val));
-                                }
-                              },
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 450),
+              child: AspectRatio(
+                aspectRatio: 1.586,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAD8B1),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(color: const Color(0xFF8D7B68), width: 3),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black38, offset: Offset(6, 6), blurRadius: 4),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // New Top-Left Currency Preference Module
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text("TENDER PREF", style: TextStyle(fontSize: 7, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                              const SizedBox(height: 4),
+                              Container(
+                                width: 75,
+                                height: 45,
+                                decoration: BoxDecoration(
+                                  color: goldLeaf.withOpacity(0.4),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: vintageInk.withOpacity(0.3)),
+                                ),
+                                child: BlocBuilder<ExpenseBloc, ExpenseState>(
+                                  builder: (context, state) {
+                                    String currentDefault = (state is ExpenseLoaded) ? state.defaultCurrency : "RON";
+                                    return DropdownButtonHideUnderline(
+                                      child: DropdownButton<String>(
+                                        value: currentDefault,
+                                        alignment: Alignment.center,
+                                        dropdownColor: const Color(0xFFF4EBD9),
+                                        icon: const SizedBox.shrink(), // Hide icon for cleaner "chip" look
+                                        style: const TextStyle(fontFamily: 'Georgia', fontSize: 18, fontWeight: FontWeight.bold, color: vintageInk),
+                                        items: _supportedCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                                        onChanged: (val) {
+                                          if (val != null) {
+                                            context.read<ExpenseBloc>().add(ChangeDefaultCurrency(val));
+                                          }
+                                        },
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            "LEDGER CARD",
+                            style: TextStyle(
+                              fontFamily: 'Georgia',
+                              fontWeight: FontWeight.bold,
+                              color: vintageInk.withOpacity(0.7),
+                              letterSpacing: 2,
+                              fontSize: 10,
                             ),
                           ),
+                        ],
+                      ),
+                      const Spacer(),
+                      Text(
+                        cardNumber,
+                        style: const TextStyle(
+                          fontFamily: 'Courier',
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 2,
+                          color: vintageInk,
+                          shadows: [Shadow(color: Colors.black26, offset: Offset(1, 1))],
                         ),
-                      );
-                    },
+                      ),
+                      const SizedBox(height: 15),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text("ACCOUNT HOLDER", style: TextStyle(fontSize: 7, fontWeight: FontWeight.bold)),
+                                Text(
+                                  userEmail.toUpperCase(),
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontFamily: 'Georgia', fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () {
+                              apiService.userId = null;
+                              apiService.userEmail = null;
+                              apiService.token = null;
+                              Navigator.pushReplacementNamed(context, '/login');
+                            },
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                const Text("EXPIRY / LOGOUT", style: TextStyle(fontSize: 7, fontWeight: FontWeight.bold)),
+                                const Text("09 / 26", style: TextStyle(fontFamily: 'Courier', fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFA64D32))),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  _buildProfileItem(Icons.security, "STATUS", "Verified Auditor", vintageBorder),
-                  ListTile(
-                    leading: const Icon(Icons.logout, color: Color(0xFFA64D32)),
-                    title: const Text("CEASE SESSION", style: TextStyle(color: Color(0xFFA64D32), fontWeight: FontWeight.bold)),
-                    onTap: () {
-                      apiService.userId = null;
-                      apiService.userEmail = null;
-                      apiService.token = null;
-                      Navigator.pushReplacementNamed(context, '/login');
-                    },
-                  ),
-                ],
+                ),
               ),
             ),
-            const SizedBox(height: 20),
-            const Text(
-              "Trackify Ledger System v2.5\nAll rights reserved to the auditor.",
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 9, fontStyle: FontStyle.italic, color: Color(0xFF8D7B68)),
-            ),
-          ],
+          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildProfileItem(IconData icon, String label, String value, BorderSide border) {
-    return Container(
-      decoration: BoxDecoration(border: Border(bottom: border)),
-      child: ListTile(
-        leading: Icon(icon, color: const Color(0xFF2B2118)),
-        title: Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF5E503F))),
-        subtitle: Text(value, style: const TextStyle(fontFamily: 'Georgia', fontSize: 16, color: Color(0xFF2B2118))),
       ),
     );
   }
