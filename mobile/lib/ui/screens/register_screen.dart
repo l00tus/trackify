@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../data/expense_api_service.dart';
 import '../../logic/expense_bloc.dart';
+import '../../data/auth_storage.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -19,6 +20,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       final api = context.read<ExpenseApiService>();
       await api.register(_emailController.text, _passController.text);
+
+      // Save to storage
+      if (api.token != null && api.userId != null) {
+        await AuthStorage.save(token: api.token!, userId: api.userId!);
+      }
+
       if (mounted) {
         context.read<ExpenseBloc>().add(LoadExpenses());
         Navigator.pushReplacementNamed(context, '/home');

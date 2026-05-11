@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/expense.dart';
+import 'auth_storage.dart';
 
 class ExpenseApiService {
   static const String _baseUrl = 'http://localhost:8000';
@@ -14,12 +15,22 @@ class ExpenseApiService {
   String? token;
 
   ExpenseApiService() {
+    _loadFromStorage();
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 15),
       responseType: ResponseType.json,
     ));
+
+    _dio.interceptors.add(InterceptorsWrapper(
+    onRequest: (options, handler) {
+      if (token != null) {
+        options.headers['Authorization'] = 'Bearer $token';
+      }
+      handler.next(options);
+    },
+  ));
 
     if (!kIsWeb) {
       _dio.httpClientAdapter = IOHttpClientAdapter(
@@ -32,14 +43,23 @@ class ExpenseApiService {
     }
   }
 
-  Future<void> login(String email, String password) async {
-    final response = await _dio.post('/login', data: {
-      "email": email,
-      "password": password,
-    });
+  Future<void> _loadFromStorage() async {
+    token = await AuthStorage.getToken();
+    userId = await AuthStorage.getUserId();
+  }
+
+  Future<Map<String, dynamic>> login(String email, String password) async {
+    final response = await _dio.post(
+      '/login',
+      data: {
+        'email': email,
+        'password': password,
+      },
+    );
     userId = response.data['user_id'];
     userEmail = email;
     token = response.data['access_token'];
+    return Map<String, dynamic>.from(response.data);
   }
 
   Future<void> register(String email, String password) async {
@@ -52,7 +72,7 @@ class ExpenseApiService {
     token = response.data['access_token'];
   }
 
-  Future<String> fetchUserCurrency() async {
+  Future<String> fetchUserCurrency(String uid) async {
     if (userId == null) return "RON";
     try {
       final response = await _dio.get('/preferences/$userId');
@@ -62,7 +82,7 @@ class ExpenseApiService {
     }
   }
 
-  Future<List<Expense>> fetchExpenses() async {
+  Future<List<Expense>> fetchExpenses(String uid) async {
     if (userId == null) return [];
     try {
       final response = await _dio.get('/expenses/$userId');
@@ -76,21 +96,21 @@ class ExpenseApiService {
     }
   }
 
-  Future<Expense> uploadReceipt(File image) async {
+  Future<Expense> uploadReceipt(File image, String uid) async {
     FormData formData = FormData.fromMap({
-      "user_id": userId,
+      "user_id": uid,
       "file": await MultipartFile.fromFile(image.path, filename: "receipt.jpg"),
     });
     return await _sendToAi(formData);
   }
 
-  Future<void> updateUserCurrency(String currency) async {
-    await _dio.post('/preferences/$userId', data: {"currency": currency});
+  Future<void> updateUserCurrency(String currency, String uid) async {
+    await _dio.post('/preferences/$uid', data: {"currency": currency});
   }
 
-  Future<Expense> uploadReceiptWeb(Uint8List bytes) async {
+  Future<Expense> uploadReceiptWeb(Uint8List bytes, String uid) async {
     FormData formData = FormData.fromMap({
-      "user_id": userId,
+      "user_id": uid,
       "file": MultipartFile.fromBytes(bytes, filename: "receipt.jpg"),
     });
     return await _sendToAi(formData);
