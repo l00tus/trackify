@@ -11,8 +11,16 @@ import 'package:trackify/ui/screens/profile_screen.dart';
 import 'package:trackify/ui/screens/register_screen.dart';
 import 'package:trackify/data/auth_storage.dart';
 
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // Import this
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
   final userId = await AuthStorage.getUserId() ?? '';
   runApp(MyApp(userId: userId));
 }
