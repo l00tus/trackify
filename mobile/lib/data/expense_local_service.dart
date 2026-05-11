@@ -1,29 +1,28 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:sqflite/sqflite.dart';
 import '../models/expense.dart';
 import 'local_database.dart';
-import 'package:sqflite/sqflite.dart';
 
 class ExpenseLocalService {
   final _db = LocalDatabase.instance;
 
   Future<void> insertExpense(Expense expense, {bool isSynced = false}) async {
+    if (kIsWeb) return;
     final db = await _db.database;
-    await db.insert(
-      'expenses',
-      {
-        'id': expense.id,
-        'user_id': expense.userId,
-        'store_name': expense.storeName,
-        'amount': expense.amount,
-        'date': expense.date.toIso8601String(),
-        'category': expense.category,
-        'currency': expense.currency,
-        'is_synced': isSynced ? 1 : 0,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace, // safe for re-sync
-    );
+    await db.insert('expenses', {
+      'id': expense.id,
+      'user_id': expense.userId,
+      'store_name': expense.storeName,
+      'amount': expense.amount,
+      'date': expense.date.toIso8601String(),
+      'category': expense.category,
+      'currency': expense.currency,
+      'is_synced': isSynced ? 1 : 0,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<Expense>> getAllExpenses(String userId) async {
+    if (kIsWeb) return [];
     final db = await _db.database;
     final rows = await db.query(
       'expenses',
@@ -35,6 +34,7 @@ class ExpenseLocalService {
   }
 
   Future<List<Expense>> getUnsyncedExpenses(String userId) async {
+    if (kIsWeb) return [];
     final db = await _db.database;
     final rows = await db.query(
       'expenses',
@@ -45,30 +45,25 @@ class ExpenseLocalService {
   }
 
   Future<void> markSynced(String id) async {
+    if (kIsWeb) return;
     final db = await _db.database;
-    await db.update(
-      'expenses',
-      {'is_synced': 1},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await db.update('expenses', {'is_synced': 1},
+        where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> markAllSynced(List<String> ids) async {
+    if (kIsWeb) return;
     final db = await _db.database;
     final batch = db.batch();
     for (final id in ids) {
-      batch.update(
-        'expenses',
-        {'is_synced': 1},
-        where: 'id = ?',
-        whereArgs: [id],
-      );
+      batch.update('expenses', {'is_synced': 1},
+          where: 'id = ?', whereArgs: [id]);
     }
     await batch.commit(noResult: true);
   }
 
   Future<void> replaceAllFromServer(List<Expense> expenses, String userId) async {
+    if (kIsWeb) return;
     final db = await _db.database;
     await db.delete('expenses', where: 'user_id = ?', whereArgs: [userId]);
     final batch = db.batch();

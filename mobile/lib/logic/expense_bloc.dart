@@ -98,12 +98,14 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       if (await _isOnline()) {
         try {
           final serverExpenses = await apiService.fetchExpenses();
+          print('debug server express count: ${serverExpenses.length} expenses');
           await localService.replaceAllFromServer(serverExpenses, uid);
           emit((state as ExpenseLoaded).copyWith(
             expenses: serverExpenses,
             hasPendingSync: false,
           ));
-        } catch (_) {
+        } catch (e) {
+          print('debug fetchExpenses error: $e');
           // Server failed — stay on local data, that's fine
         }
       }
