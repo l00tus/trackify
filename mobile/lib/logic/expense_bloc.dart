@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../models/expense.dart';
 import '../data/expense_api_service.dart';
+import '../data/socket_service.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 abstract class ExpenseEvent {}
@@ -51,10 +52,26 @@ class ExpenseLoaded extends ExpenseState {
 
 class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
   final ExpenseApiService apiService;
+  final SocketService socketService;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
-  ExpenseBloc(this.apiService) : super(ExpenseLoading()) {
+  ExpenseBloc({
+    required this.apiService,
+    required this.socketService
+  }) : super(ExpenseLoading()) {
+
     on<LoadExpenses>((event, emit) async {
+      final uid = apiService.userId ?? '';
+
+      // Initialize WebSocket connection when expenses are loaded
+      if (uid.isNotEmpty) {
+        socketService.connect(uid, (data) {
+          if (data['type'] == 'RECEIPT_PROCESSED') {
+            add(LoadExpenses()); // Auto-refresh the list
+          }
+        });
+      }
+
       try {
         final results = await Future.wait([
           apiService.fetchExpenses(),
